@@ -76,9 +76,11 @@ This sample interacts with a simulated MES system that is backed by a postgres d
 
 The following instructions, walk through installing and configuration of a PostgreSQL server, database creation, and generation of realistic synthetic data.
 
+> Note the database credentials are hardcoded in `postgres_creds.json` for the purpose of this sample. For production, you should use AWS Secrets Manager or another secure alternative to store and retrieve secrets outside the codebase.
+
 #### 2.1.1 Option 1 - Installing on AWS Cloud 9
 
-The following installation script was developed for `Amazon Linux 2023`. If deploying on an `AWS Cloud9` instance, only SSM is required (no need to enable SSH nor setup a keypair), and an `m5.large` instance is recommended.
+The following installation script was developed for `Amazon Linux 2023`. If deploying on an `AWS Cloud9` instance, only SSM is required (no need to enable SSH nor setup a keypair), and an `m5.large` instance is recommended for optimal performance but will also work on smaller instances such as `t3.small`.
 
 If using `Amazon Linux 2023`, you can install and configure test postgres database by running the following from the project directory:
 
@@ -110,7 +112,7 @@ Once in `psql`, list the databases and users:
 ```
 
 ```sql
-\d
+\du
 ```
 
 ![postgres-database-user-confirmation](assets/postgres-installation-confirmation.png)
