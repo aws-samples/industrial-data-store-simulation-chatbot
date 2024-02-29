@@ -1,0 +1,7 @@
+{
+    "user": "mesuser",
+    "pwd": "MESpassword",
+    "host": "localhost",
+    "port": "5432",
+    "db_name": "messim"
+}
