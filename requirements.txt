@@ -1,6 +1,5 @@
 Faker==22.7.0
 pandas==2.2.0
-psycopg2-binary==2.9.9
 SQLAlchemy==2.0.25
 langchain==0.1.11
 langchain-community==0.0.20

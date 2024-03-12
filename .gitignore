@@ -160,3 +160,6 @@ cython_debug/
 
 #notebooks for testing
 *.ipynb
+
+#sqllite simulation database 
+mes.db
