@@ -34,7 +34,7 @@ This code sample leverages Anthropic Claude models on Amazon Bedrock. See [Model
 
 ## 1. Environment setup
 
-> Note: If using this sample on `AWS Cloud9`, you can skip to step #1.2.
+> Note: If using this sample on `AWS Cloud9` or `Amazon SageMaker Studio`, you can skip to step #1.2.
 
 The following requires an installation of `python3`.
 
@@ -70,99 +70,67 @@ pip install -r requirements.txt
 
 ## 2. Creating the simulated MES
 
-### 2.1 Installing PostgreSQL
-
-This sample interacts with a simulated MES system that is backed by a postgres database. Feel free to use an existing postgres server of your choice, or simply deploy a test instance locally.
-
-The following instructions, walk through installing and configuration of a PostgreSQL server, database creation, and generation of realistic synthetic data.
-
-> Note the database credentials are hardcoded in `postgres_creds.json` for the purpose of this sample. For production, you should use AWS Secrets Manager or another secure alternative to store and retrieve secrets outside the codebase.
-
-#### 2.1.1 Option 1 - Installing on AWS Cloud 9
-
-The following installation script was developed for `Amazon Linux 2023`. If deploying on an `AWS Cloud9` instance, only SSM is required (no need to enable SSH nor setup a keypair), and an `m5.large` instance is recommended for optimal performance but will also work on smaller instances such as `t3.small`.
-
-If using `Amazon Linux 2023`, you can install and configure test postgres database by running the following from the project directory:
-
-```bash
-chmod +x MES-synthetic-data/install_postgres.sh # adds executable permissions
-./MES-synthetic-data/install_postgres.sh
-```
-
-This test instance will only listen in on `localhost` and will create the database username and password based on the values found in the user defined `postgres_creds.json`. The database will only be available locally, `localhost`. See [Client Authentication](https://www.postgresql.org/docs/current/client-authentication.html) in the official PostgreSQL documentation for additional details.
-
-**Check PostgreSQL Service Status**: You can check the status of the PostgreSQL service to ensure it is active and running by running the following:
-
-```bash
-sudo systemctl status postgresql
-```
-
-A successful installation will result in a status of `active (running)`
-
-**Verify database and user creation**: We can then connect to postgreSQL and verify that the database and user were properly created based on the values of `postgres_creds.json`
-
-```bash
-sudo -u postgres psql #connect using the psql client
-```
-
-Once in `psql`, list the databases and users:
-
-```sql
-\l
-```
-
-```sql
-\du
-```
-
-![postgres-database-user-confirmation](assets/postgres-installation-confirmation.png)
-
-You have now successfully completed the postgreSQL setup. Proceed to `step 2.2`.
-
-#### 2.1.2 Option 2 - Installing manually
-
-If running on a different system, you can alternatively install postgres without the above script and manually create the simulation MES database. You can follow the rest of the instructions as is to create the synthetic data. See [PostgreSQL Downloads](https://www.postgresql.org/download/) for details on installing postgres on your system.
-
-If connecting to an existing system or using alternate credentials, edit `postgres_creds.json` with the appropriate values.
-
-### 2.2 Generating synthetic data
-
 This repository contains scripts to simulate a basic Manufacturing Execution System (MES) that manages and monitors the production process from raw materials to finished goods. The database structure is designed to track products, machinery, work orders, inventory levels, quality control, and employee details.
 
 To create the database tables and populate them with synthetic data. From the project root directory, run:
 
 ```bash
-# create tables
-python3 MES-synthetic-data/create_tables.py
-# simulate data
-python3 MES-synthetic-data/mesdata-sim.py
+# create tables and simulation data
+python3 MES-synthetic-data/sqlite-synthetic-mes-data.py
 ```
 
-### 2.3 Validate that the tables were successfully created
+> Note: The script can easily be updated to create more synthetic data. Every table provides an easy function that can be modified as needed.
 
-To validate the table creation and synthetic data generation, you can run the following:
+### Validate that the tables were successfully created
 
-From the terminal, connect using `psql` as the user created previously
+After executing the `sqlite-synthetic-mes-data.py` script, which creates the SQLite database file `mes.db` and populates it with synthetic data, you can test and verify the database using the following steps:
 
-```bash
-export DB_USER=$(jq -r '.user' postgres_creds.json)
-export PGPASSWORD=$(jq -r '.pwd' postgres_creds.json)
-export DB_NAME=$(jq -r '.db_name' postgres_creds.json)
-psql -U "$DB_USER" -d "$DB_NAME" -h localhost -W
-```
+1. **Open the SQLite Command-line Tool**:
 
-List the tables. Then query one of the tables.
+    Open a terminal or command prompt, navigate to the `MES-synthetic-data` directory, and run the following command:
 
-```sql
-\dt
-SELECT * FROM Products LIMIT 10;
-```
+    ```bash
+    sqlite3 mes.db
+    ```
 
-![tables-sim](assets/tablelist.png)
+    This will open the SQLite command-line tool and connect to the `mes.db` database file.
+
+2. **List the Tables**:
+
+    Inside the SQLite command-line tool, list all the tables in the database by running:
+
+    ```sql
+    .tables
+    ```
+
+    You should see the following tables listed: `Products`, `Machines`, `WorkOrders`, `Inventory`, `QualityControl`, and `Employees`.
+
+3. **Query a Table**:
+
+    To check the content of a specific table, execute a `SELECT` query. For example, to retrieve the first 10 rows from the `Products` table:
+
+    ```sql
+    SELECT * FROM Products LIMIT 10;
+    ```
+
+    ![table list](assets/table-list.png)
+4. **Execute Custom Queries**:
+
+    You can run any other SQL queries to inspect the data in the other tables. For example:
+
+    ```sql
+    SELECT * FROM Machines LIMIT 5;
+    SELECT COUNT(*) FROM WorkOrders;
+    SELECT Name, Role FROM Employees WHERE Shift = 'morning';
+    ```
+
+5. **Exit the SQLite Command-line Tool**:
+
+    When you're done inspecting the data, exit the SQLite command-line tool by typing `.quit` or pressing `Ctrl+D`.
 
 This concludes the pre-requisites section and the system is now ready. An overview of the simulated MES is provided below.
 
-### 2.4 Table Overview
+### Table Overview
 
 To better understand the data we are working with, here's an overview of each table and its role within the system:
 
@@ -241,10 +209,10 @@ Some sample questions are provided. As this is a demo, the application has been 
 To start the streamlit app, simply run:
 
 ```bash
-streamlit run chatbot/Chat.py --server.port 8080
+streamlit run chatbot/Chat.py 
 ```
 
-> If running this example in AWS Cloud9, you can access the streamlit app by clicking `Preview -> Preview Running Application` from the menu at the top of the screen. This way, you can access it securely without exposing any ports to the internet.
+> If running this example in AWS Cloud9, append `--server.port 8080` so you can access the streamlit app by clicking `Preview -> Preview Running Application` from the menu at the top of the screen. This way, you can access it securely without exposing any ports to the internet.
 
 On the sidebar (left-hand side), you can reset the chat to clear the chat history and ask a new question. You can use one of the example questions provided or ask your own in the chat box at the bottom.
 

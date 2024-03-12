@@ -4,10 +4,10 @@ import os
 import re
 import time
 import json
+import sqlite3
 
 import boto3
 import pandas as pd
-from sqlalchemy import create_engine, text
 from langchain.prompts import PromptTemplate
 from langchain.chains import ConversationChain
 from langchain.llms.bedrock import Bedrock
@@ -92,10 +92,9 @@ def read_content(file_path):
     return message
 
 
-
 def generate_sql_prompt(question,
                         instructions,
-                        creds,
+                        db_path,
                         current_date=datetime.strftime(datetime.now(), '%A, %Y-%m-%d')):
     """Generates an prompt for text-to-SQL. Currently tuned for Claude which
     leverages xml tagging to separate key parts of the context. Supplies the 
@@ -107,8 +106,8 @@ def generate_sql_prompt(question,
         question to be answered
     instructions :
         Model specific instructions engineered for text-to-SQL
-    creds :
-        dictionary of database credentials
+    db_path :
+        Path to the SQLite database file
     current_date :
         A specified date. (default=datetime.now())
     Returns
@@ -121,7 +120,7 @@ def generate_sql_prompt(question,
     sql_prompt = f"Current Date: {current_date}\n\n"
     # add db description and schema
     sql_prompt += f"""<description>\n This database simulates a Manufacturing Execution System (MES), which is a software system designed to manage the production process of products. The MES is used to track the production process, maintain the inventory, and ensure the quality of the products. The MES is designed to be used in a manufacturing environment, where products are manufactured, machines are used to produce products, work orders are created and tracked, and quality control is performed.\n</description>\n\nThe database schema is as follows:"""
-    schema = get_mes_schema(creds=creds)
+    schema = get_mes_schema(db_path=db_path)
     sql_prompt += f"\n\n<schema> {schema} \n</schema>\n\n"
     # add in user question and task instructions
     sql_prompt += instructions
@@ -157,45 +156,42 @@ def generate_nlp_prompt(data, question, query, instructions):
 
     return prompt
 
-def get_mes_schema(creds):
+def get_mes_schema(db_path):
     """Get the schema of the mes database
     Parameters
     ----------
-    creds :
-        dictionary of database credentials
+    db_path :
+        Path to the SQLite database file
     Returns
     ----------
     str :
         schema of the mes database as a string
     """
-    conn_str = "postgresql://{user}:{pwd}@{host}:{port}/{db_name}".format(**creds)
-    db = SQLDatabase.from_uri(conn_str)
+    db = SQLDatabase.from_uri(f"sqlite:///{db_path}", sample_rows_in_table_info=8)
     tables = db.get_usable_table_names()
     schema = db.get_table_info_no_throw(tables)
     return schema
 
-def query_postgres(query, creds):
-    """Creates a connection to a postgres database and executes a query
+def query_sqlite(query, db_path):
+    """Creates a connection to a SQLite database and executes a query
     Parameters
     ----------
     query :
         An string containing SQL code
-    creds :
-        dictionary of database credentials
+    db_path :
+        Path to the SQLite database file
     Returns
     ----------
     pandas.DataFrame :
         the results of the SQL query
     """
-    conn_str = "postgresql://{user}:{pwd}@{host}:{port}/{db_name}".format(
-        **creds)
-    engine = create_engine(conn_str)
     try:
-        df = pd.read_sql_query(text(query), con=engine)
+        conn = sqlite3.connect(db_path)
+        df = pd.read_sql_query(query, conn)
+        conn.close()
         return df
     except Exception as e:
         return e
-
 
 def parse_generated_sql(response):
     """Given a text-to-SQL generated output, extract the provided SQL. If query
