@@ -34,7 +34,7 @@ This code sample leverages Anthropic Claude models on Amazon Bedrock. See [Model
 
 ## 1. Environment setup
 
-> Note: If using this sample on `AWS Cloud9` or `Amazon SageMaker Studio`, you can skip to step #1.2.
+> Note: If using this sample on `AWS Cloud9` or `Amazon SageMaker Studio JupyterLab` (recommended), you can skip to step #1.2.
 
 The following requires an installation of `python3`.
 
@@ -213,6 +213,8 @@ streamlit run chatbot/Chat.py
 ```
 
 > If running this example in AWS Cloud9, append `--server.port 8080` so you can access the streamlit app by clicking `Preview -> Preview Running Application` from the menu at the top of the screen. This way, you can access it securely without exposing any ports to the internet.
+
+> If running this example in Amazon SageMaker Studio JupyterLab, you can access the streamlit app through the proxy on `https://{domainId}.studio.{region}.sagemaker.aws/jupyter/default/proxy/{port}/`, e.g. `https://d-abcd12345xyz.studio.us-east-1.sagemaker.aws/jupyter/default/proxy/8501/`. Make sure to include the trailing forward slash.
 
 On the sidebar (left-hand side), you can reset the chat to clear the chat history and ask a new question. You can use one of the example questions provided or ask your own in the chat box at the bottom.
 
