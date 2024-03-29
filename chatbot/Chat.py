@@ -12,8 +12,8 @@ import streamlit as st
 
 from langchain.prompts import PromptTemplate
 from langchain.chains import ConversationChain
-from langchain.llms.bedrock import Bedrock
 from langchain.memory import ConversationBufferMemory
+from anthropic_bedrock import AnthropicBedrock
 
 from chatbot_lib import (
     generate_nlp_prompt,
@@ -59,8 +59,9 @@ st.sidebar.slider(
 )
 model_id = st.sidebar.selectbox(
     'Select Model ID:',
-    ["anthropic.claude-v2:1", "anthropic.claude-v2", "anthropic.claude-instant-v1"],
-    index=2,  # default to claude instant
+    ["anthropic.claude-v2:1", "anthropic.claude-v2", "anthropic.claude-instant-v1",
+    "anthropic.claude-3-haiku-20240307-v1:0", "anthropic.claude-3-sonnet-20240229-v1:0"],
+    index=3,  # default to claude 3 haiku
     key='model_id'
 )
 
@@ -76,10 +77,16 @@ question_list = [q for q in example_questions.values()]
 
 db_path = os.path.join(proj_dir, 'mes.db')  # Path to the SQLite database file
 
-model_kwargs = {
-    "max_tokens_to_sample": 8000,
-    "temperature": st.session_state.temperature,
-}
+if (model_id == "anthropic.claude-3-haiku-20240307-v1:0") or (model_id == "anthropic.claude-3-sonnet-20240229-v1:0"):
+    model_kwargs = {
+        "max_tokens": 4096,
+        "temperature": st.session_state.temperature,
+    }
+else:
+    model_kwargs = {
+        "max_tokens_to_sample": 4096,
+        "temperature": st.session_state.temperature,
+    }
 
 # initialize state
 if "question" not in st.session_state:
@@ -91,7 +98,7 @@ if "messages" not in st.session_state.keys():
 question = st.selectbox("Example Questions:", [""] + question_list, key="selected_question")
 
 # initialize the question
-if (question != "") & (len(st.session_state.messages) == 1):
+if (question != ""):
     st.session_state.messages.append({"role": "user", "content": question})
 
 # Display chat messages
@@ -124,9 +131,12 @@ if last_msg["role"] == "user":
                 prompt = last_msg["content"]
             # Model invocation
             call_start_time = time()
+            token_client = AnthropicBedrock()
+            logging.info(f"Number of input tokens for sql generation: {token_client.count_tokens(prompt)}")
             response = st.session_state.conversation.predict(input=prompt)
+            logging.info(f"Number of output tokens for sql generation: {token_client.count_tokens(response)}")
             sql_running_time = round(time() - call_start_time, 2)
-            logger.info(f"\nBedrock SQL generation calling time:\n{sql_running_time}s\n")
+            logger.info(f"Bedrock SQL generation calling time: {sql_running_time}s\n")
             query, has_sql = parse_generated_sql(response)
             # If sql is generated, query the database
             if has_sql:
@@ -140,8 +150,10 @@ if last_msg["role"] == "user":
                 while type(data) != pd.core.frame.DataFrame and time() - call_start_time < 120 and trial_cnt < 5:
                     pred_start_time = time()
                     new_prompt = f'The previous SQL you generated has the following error:{data}. Please regenerate the sql that corrects the previous error'
+                    logging.info(f"Number of input tokens for sql generation: {token_client.count_tokens(new_prompt)}")
                     response = st.session_state.conversation.predict(input=new_prompt)
-                    logger.info(f"\nBedrock SQL generation calling time:\n{round(time() - pred_start_time, 2)}s\n")
+                    logging.info(f"Number of output tokens for sql generation: {token_client.count_tokens(response)}")
+                    logger.info(f"Bedrock SQL generation calling time: {round(time() - pred_start_time, 2)}s\n")
                     query, has_sql = parse_generated_sql(response)
                     query_fmt = sqlparse.format(query, reindent=True, keyword_case='upper')
                     st.text(response)
@@ -156,13 +168,15 @@ if last_msg["role"] == "user":
                     messages.append(data.head(50))
                     nlp_start_time = time()
                     nlp_prompt = generate_nlp_prompt(data=data, question=question, query=query, instructions=nlp_instructions)
+                    logging.info(f"Number of input tokens for nlp generation: {token_client.count_tokens(nlp_prompt)}")
                     response = st.session_state.conversation.predict(input=nlp_prompt)
-                logger.info(f"\nBedrock NLP generation calling time:\n{round(time() - nlp_start_time, 2)}s\n")
+                    logging.info(f"Number of output tokens for nlp generation: {token_client.count_tokens(response)}")
+                logger.info(f"Bedrock NLP generation calling time: {round(time() - nlp_start_time, 2)}s\n")
                 response = parse_generated_nlp(response)
                 nlp_running_time = round(time() - nlp_start_time, 2)
                 response += '\n\nSQL generation time is %3.2fs, NLP generation time is %3.2fs, total running time is %3.2fs' % (
                 sql_running_time, nlp_running_time, time() - call_start_time)
-            st.write(response.replace('$', '\$'))
+            st.write(response.replace('$', '\\$'))
             messages.append(response)
     messages = [{"role": "assistant", "content": m} for m in messages]
     st.session_state.messages += messages

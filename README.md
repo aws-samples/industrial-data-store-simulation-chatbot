@@ -30,7 +30,7 @@ Being able to interact with industrial data stores using natural language is not
 
 ## 0. Pre-requisites
 
-This code sample leverages Anthropic Claude models on Amazon Bedrock. See [Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) to enable model access. For smaller schemas, Claude Instant is recommended, for larger more complex ones, use Claude 2. Claude Instant will improve inference latency and minimize cost, but Claude 2.x has better reasoning capabilities.
+This code sample leverages Anthropic Claude models on Amazon Bedrock. See [Model access](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) to enable model access. For smaller schemas, Claude 3 Haiku is recommended, for larger more complex ones, use Claude 3 Sonnet. Claude 3 Haiku will improve inference latency and minimize cost, but Claude 3 Sonnet has better reasoning capabilities.
 
 ## 1. Environment setup
 

@@ -11,6 +11,7 @@ import pandas as pd
 from langchain.prompts import PromptTemplate
 from langchain.chains import ConversationChain
 from langchain.llms.bedrock import Bedrock
+from langchain_community.chat_models import BedrockChat
 from langchain.memory import ConversationBufferMemory
 from langchain_community.utilities import SQLDatabase
 
@@ -27,11 +28,19 @@ def get_llm(model_id="anthropic.claude-v2:1", model_kwargs="""{"maxTokenCount": 
     )
     bedrock_client = boto3.client(
         service_name='bedrock-runtime',
+        endpoint_url='https://bedrock-runtime.'+os.getenv('AWS_REGION', 'us-east-1')+'.amazonaws.com',
         )
-    llm = Bedrock(
-        client=bedrock_client,
-        model_id=model_id,
-        model_kwargs=model_kwargs)
+    if (model_id == "anthropic.claude-3-haiku-20240307-v1:0") or (model_id == "anthropic.claude-3-sonnet-20240229-v1:0"):
+        llm = BedrockChat(
+            client=bedrock_client,
+            model_id=model_id,
+            model_kwargs=model_kwargs)
+    else:
+        llm = Bedrock(
+            client=bedrock_client,
+            model_id=model_id,
+            model_kwargs=model_kwargs)
+
     return llm
 
 
@@ -126,7 +135,7 @@ def generate_sql_prompt(question,
     sql_prompt += instructions
     sql_prompt += "\n\nThe task is:"
     sql_prompt += f"\n<task>\n{question}\n</task>\n\n"
-    logging.info(f"\nSQL prompt:\n{sql_prompt}\n")
+    logging.info(f"Length of prompt for SQL generation: {len(sql_prompt)} characters\n")
 
     return sql_prompt
 
@@ -152,7 +161,7 @@ def generate_nlp_prompt(data, question, query, instructions):
 
     prompt = nlp_prompt % (question, query, data, instructions)
 
-    logging.info(f"\nBedrock NLP prompt:\n{prompt}\n")
+    logging.info(f"Length of prompt for NLP generation: {len(prompt)} characters\n")
 
     return prompt
 
@@ -205,7 +214,7 @@ def parse_generated_sql(response):
     str :
         either the SQL from the generated text or the original response
     """
-    logging.info(f"\nSQL code:\n{response}\n")
+    logging.info(f"\nResponse that should include SQL code:\n{response}\n")
     try:
         start_sql = re.search(r'<sql>', response).end()
         end_sql = re.search(r'</sql>', response).start()
@@ -227,12 +236,12 @@ def parse_generated_nlp(response):
     str :
         extracted string
     """
-    logging.info(f"\nOutput:\n{response}\n")
+    logging.info(f"NLP response:\n{response}\n")
     try:
         start = re.search(r'<response>', response).end()
         end = re.search(r'</response>', response).start()
         response = response[start:end].strip()
-        logging.info(f"\nFinal Output:\n{response}\n")
+        logging.info(f"Final Output:\n{response}\n")
         return response
     except:
         return response

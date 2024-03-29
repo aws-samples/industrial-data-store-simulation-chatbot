@@ -1,9 +1,9 @@
 {
   "question1": "Which products are currently in production?",
-  "question2": "Which work order was last cancelled",
+  "question2": "Which work order was last cancelled?",
   "question3": "What is the status of each machine in the facility?",
   "question4": "Which work orders are currently active and what products are they?",
-  "question5": "what has been the longest work order ever to complete",
+  "question5": "what has been the longest work order ever to complete?",
   "question6": "How many products failed quality control checks this month?",
   "question8": "What is the average production time for each product?",
   "question9": "Which products have never failed a quality control check?",
