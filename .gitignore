@@ -159,7 +159,7 @@ cython_debug/
 .DS_Store
 
 #notebooks for testing
-*.ipynb
+#*.ipynb
 
 #sqllite simulation database 
 mes.db
