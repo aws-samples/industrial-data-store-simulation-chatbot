@@ -163,3 +163,4 @@ cython_debug/
 
 #sqllite simulation database 
 mes.db
+*.sql
