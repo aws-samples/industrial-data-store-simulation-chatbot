@@ -4,7 +4,7 @@ import os
 from faker import Faker
 import random
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, ForeignKey, CheckConstraint
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Float, ForeignKey, CheckConstraint, DateTime
 from sqlalchemy.orm import sessionmaker
 
 # Initialize Faker
@@ -24,11 +24,35 @@ data_pools = load_data_pools(os.path.dirname(__file__) + '/data_pools.json')
 engine = create_engine(f'sqlite:///{db_file}', echo=False)
 metadata = MetaData()
 
-# Define tables
 Products = Table('Products', metadata,
     Column('ProductID', Integer, primary_key=True),
     Column('Name', String, nullable=False),
-    Column('Description', String)
+    Column('Description', String),
+    Column('Cost', Float, nullable=False)  
+)
+
+BillOfMaterials = Table('BillOfMaterials', metadata,
+    Column('BOMID', Integer, primary_key=True),
+    Column('ProductID', Integer, ForeignKey('Products.ProductID'), nullable=False),
+    Column('ComponentID', Integer, ForeignKey('Inventory.ItemID'), nullable=False),
+    Column('Quantity', Float, nullable=False)
+)
+
+Suppliers = Table('Suppliers', metadata,
+    Column('SupplierID', Integer, primary_key=True),
+    Column('Name', String, nullable=False),
+    Column('LeadTime', Integer, nullable=False) 
+)
+
+Inventory = Table('Inventory', metadata,
+    Column('ItemID', Integer, primary_key=True),
+    Column('Name', String, nullable=False),
+    Column('Quantity', Integer, nullable=False),
+    Column('ReorderLevel', Integer, nullable=False),
+    Column('SupplierID', Integer, ForeignKey('Suppliers.SupplierID')),
+    Column('LeadTime', Integer, nullable=False), 
+    Column('Cost', Float, nullable=False), 
+    Column('LotNumber', String) 
 )
 
 WorkCenters = Table('WorkCenters', metadata,
@@ -36,7 +60,8 @@ WorkCenters = Table('WorkCenters', metadata,
     Column('Name', String, nullable=False),
     Column('Description', String),
     Column('Capacity', Float, nullable=False),
-    Column('CapacityUOM', String, nullable=False)
+    Column('CapacityUOM', String, nullable=False),
+    Column('CostPerHour', Float, nullable=False) 
 )
 
 Machines = Table('Machines', metadata,
@@ -50,29 +75,18 @@ Machines = Table('Machines', metadata,
     Column('SetupTime', Integer, nullable=False),
     Column('EfficiencyFactor', Float, nullable=False),
     Column('MaintenanceFrequency', Integer, nullable=False),
-    Column('LastMaintenanceDate', String),
-    Column('ProductChangeoverTime', Integer, nullable=False)
-)
-
-Inventory = Table('Inventory', metadata,
-    Column('ItemID', Integer, primary_key=True),
-    Column('Name', String, nullable=False),
-    Column('Quantity', Integer, nullable=False),
-    Column('ReorderLevel', Integer, nullable=False)
-)
-
-Shifts = Table('Shifts', metadata,
-    Column('ShiftID', Integer, primary_key=True),
-    Column('Name', String, nullable=False),
-    Column('StartTime', String, nullable=False),
-    Column('EndTime', String, nullable=False)
+    Column('LastMaintenanceDate', DateTime),
+    Column('NextMaintenanceDate', DateTime),  # New: Maintenance scheduling
+    Column('ProductChangeoverTime', Integer, nullable=False),
+    Column('CostPerHour', Float, nullable=False)  # New: Cost tracking
 )
 
 Employees = Table('Employees', metadata,
     Column('EmployeeID', Integer, primary_key=True),
     Column('Name', String, nullable=False),
     Column('Role', String),
-    Column('ShiftID', Integer, ForeignKey('Shifts.ShiftID'))
+    Column('ShiftID', Integer, ForeignKey('Shifts.ShiftID')),
+    Column('HourlyRate', Float, nullable=False)  # New: Cost tracking
 )
 
 WorkOrders = Table('WorkOrders', metadata,
@@ -82,19 +96,33 @@ WorkOrders = Table('WorkOrders', metadata,
     Column('MachineID', Integer, ForeignKey('Machines.MachineID'), nullable=False),
     Column('EmployeeID', Integer, ForeignKey('Employees.EmployeeID'), nullable=False),
     Column('Quantity', Integer, nullable=False),
-    Column('PlannedStartTime', String, nullable=False),
-    Column('PlannedEndTime', String, nullable=False),
-    Column('ActualStartTime', String),
-    Column('ActualEndTime', String),
-    Column('Status', String, CheckConstraint("Status IN ('scheduled', 'in_progress', 'completed', 'cancelled')"))
+    Column('PlannedStartTime', DateTime, nullable=False),
+    Column('PlannedEndTime', DateTime, nullable=False),
+    Column('ActualStartTime', DateTime),
+    Column('ActualEndTime', DateTime),
+    Column('Status', String, CheckConstraint("Status IN ('scheduled', 'in_progress', 'completed', 'cancelled')")),
+    Column('Priority', Integer, nullable=False), 
+    Column('LeadTime', Integer, nullable=False), 
+    Column('LotNumber', String)  
 )
 
 QualityControl = Table('QualityControl', metadata,
     Column('CheckID', Integer, primary_key=True),
     Column('OrderID', Integer, ForeignKey('WorkOrders.OrderID'), nullable=False),
-    Column('Date', String, nullable=False),
+    Column('Date', DateTime, nullable=False),
     Column('Result', String),
-    Column('Comments', String)
+    Column('Comments', String),
+    Column('DefectRate', Float), 
+    Column('ReworkRate', Float),  
+    Column('YieldRate', Float)
+)
+
+Shifts = Table('Shifts', metadata,
+    Column('ShiftID', Integer, primary_key=True),
+    Column('Name', String, nullable=False),
+    Column('StartTime', String, nullable=False),
+    Column('EndTime', String, nullable=False),
+    Column('Capacity', Float, nullable=False) 
 )
 
 # Create all tables
@@ -103,26 +131,67 @@ metadata.create_all(engine)
 # Create a Session class bound to the engine
 Session = sessionmaker(bind=engine)
 
+def insert_suppliers(session):
+    for supplier in data_pools['suppliers']:
+        session.execute(Suppliers.insert().values(Name=supplier['name'], LeadTime=supplier['lead_time']))
+    session.commit()
+    return [row[0] for row in session.execute(Suppliers.select().with_only_columns(Suppliers.c.SupplierID))]
+
 def insert_products(session):
+    cost_range = data_pools['cost_ranges']['products']
     for name, description in zip(data_pools['product_names'], data_pools['product_descriptions']):
-        session.execute(Products.insert().values(Name=name, Description=description))
+        session.execute(Products.insert().values(
+            Name=name, 
+            Description=description,
+            Cost=round(random.uniform(cost_range['min'], cost_range['max']), 2)
+        ))
     session.commit()
     return [row[0] for row in session.execute(Products.select().with_only_columns(Products.c.ProductID))]
 
+def insert_inventory(session, supplier_ids):
+    cost_range = data_pools['cost_ranges']['components']
+    lead_time_range = data_pools['lead_time_range']
+    for name in data_pools['inventory_names']:
+        session.execute(Inventory.insert().values(
+            Name=name, 
+            Quantity=random.randint(0, 1000), 
+            ReorderLevel=random.randint(10, 100),
+            SupplierID=random.choice(supplier_ids),
+            LeadTime=random.randint(lead_time_range['min'], lead_time_range['max']),
+            Cost=round(random.uniform(cost_range['min'], cost_range['max']), 2),
+            LotNumber=f"LOT-{fake.uuid4()[:8]}"
+        ))
+    session.commit()
+    return [row[0] for row in session.execute(Inventory.select().with_only_columns(Inventory.c.ItemID))]
+
+def insert_bill_of_materials(session, product_ids, inventory_ids):
+    for product_id in product_ids:
+        for _ in range(random.randint(3, 10)):  # Each product uses 3-10 components
+            session.execute(BillOfMaterials.insert().values(
+                ProductID=product_id,
+                ComponentID=random.choice(inventory_ids),
+                Quantity=random.randint(1, 10)
+            ))
+    session.commit()
+
 def insert_work_centers(session):
+    cost_range = data_pools['cost_ranges']['work_centers']
     for wc in data_pools['work_centers']:
         session.execute(WorkCenters.insert().values(
             Name=wc['name'],
             Description=wc['description'],
             Capacity=wc['capacity'],
-            CapacityUOM=wc['capacity_uom']
+            CapacityUOM=wc['capacity_uom'],
+            CostPerHour=round(random.uniform(cost_range['min'], cost_range['max']), 2)
         ))
     session.commit()
     return [row[0] for row in session.execute(WorkCenters.select().with_only_columns(WorkCenters.c.WorkCenterID))]
 
 def insert_machines(session, work_center_ids):
+    cost_range = data_pools['cost_ranges']['machines']
     for i, machine_type in enumerate(data_pools['machine_types'], start=1):
         capacity_min, capacity_max = data_pools['nominal_capacity'][machine_type]
+        last_maintenance = datetime.now() - timedelta(days=random.randint(1, 30))
         session.execute(Machines.insert().values(
             Name=f'Machine {i}',
             Type=machine_type,
@@ -133,39 +202,33 @@ def insert_machines(session, work_center_ids):
             SetupTime=random.randint(10, 30),
             EfficiencyFactor=round(random.uniform(0.85, 0.95), 2),
             MaintenanceFrequency=random.randint(160, 200),
-            LastMaintenanceDate=(datetime.now() - timedelta(days=random.randint(1, 30))).isoformat(),
-            ProductChangeoverTime=random.randint(15, 45)
+            LastMaintenanceDate=last_maintenance,
+            NextMaintenanceDate=last_maintenance + timedelta(hours=random.randint(160, 200)),
+            ProductChangeoverTime=random.randint(15, 45),
+            CostPerHour=round(random.uniform(cost_range['min'], cost_range['max']), 2)
         ))
     session.commit()
     return [row[0] for row in session.execute(Machines.select().with_only_columns(Machines.c.MachineID))]
 
-def insert_inventory(session):
-    for name in data_pools['inventory_names']:
-        session.execute(Inventory.insert().values(
-            Name=name, 
-            Quantity=random.randint(0, 1000), 
-            ReorderLevel=random.randint(10, 100)
-        ))
-    session.commit()
-    return [row[0] for row in session.execute(Inventory.select().with_only_columns(Inventory.c.ItemID))]
-
 def insert_shifts(session):
     shift_data = [
-        ('Morning', '06:00', '14:00'),
-        ('Afternoon', '14:00', '22:00'),
-        ('Night', '22:00', '06:00')
+        ('Morning', '06:00', '14:00', 1.0),
+        ('Afternoon', '14:00', '22:00', 0.9),
+        ('Night', '22:00', '06:00', 0.8)
     ]
-    for name, start, end in shift_data:
-        session.execute(Shifts.insert().values(Name=name, StartTime=start, EndTime=end))
+    for name, start, end, capacity in shift_data:
+        session.execute(Shifts.insert().values(Name=name, StartTime=start, EndTime=end, Capacity=capacity))
     session.commit()
     return [row[0] for row in session.execute(Shifts.select().with_only_columns(Shifts.c.ShiftID))]
 
 def insert_employees(session, shift_ids):
+    rate_range = data_pools['employee_hourly_rate_range']
     for _ in range(50):  # 50 employees
         session.execute(Employees.insert().values(
             Name=fake.name(),
             Role=random.choice(['Operator', 'Technician', 'Manager', 'Quality Control']),
-            ShiftID=random.choice(shift_ids)
+            ShiftID=random.choice(shift_ids),
+            HourlyRate=round(random.uniform(rate_range['min'], rate_range['max']), 2)
         ))
     session.commit()
     return [row[0] for row in session.execute(Employees.select().with_only_columns(Employees.c.EmployeeID))]
@@ -177,14 +240,12 @@ def insert_work_orders(session, product_ids, work_center_ids, machine_ids, emplo
     work_order_ids = []
 
     for _ in range(200):  # 200 work orders
-        # Use weighted random choice for status
         status = random.choices(
             ['scheduled', 'in_progress', 'completed', 'cancelled'],
             weights=[15, 20, 60, 5],
             k=1
         )[0]
         
-        # Determine planned start based on status
         if status == 'completed':
             planned_start = fake.date_time_between_dates(start_date, now - timedelta(days=1))
         elif status == 'cancelled':
@@ -214,11 +275,14 @@ def insert_work_orders(session, product_ids, work_center_ids, machine_ids, emplo
             MachineID=random.choice(machine_ids),
             EmployeeID=random.choice(employee_ids),
             Quantity=random.randint(10, 1000),
-            PlannedStartTime=planned_start.isoformat(),
-            PlannedEndTime=planned_end.isoformat(),
-            ActualStartTime=actual_start.isoformat() if actual_start else None,
-            ActualEndTime=actual_end.isoformat() if actual_end else None,
-            Status=status
+            PlannedStartTime=planned_start,
+            PlannedEndTime=planned_end,
+            ActualStartTime=actual_start,
+            ActualEndTime=actual_end,
+            Status=status,
+            Priority=random.randint(1, 5),  # Priority from 1 (lowest) to 5 (highest)
+            LeadTime=random.randint(24, 168),  # Lead time between 1 and 7 days (in hours)
+            LotNumber=f"LOT-{fake.uuid4()[:8]}"  # Generate a random lot number
         )).inserted_primary_key[0]
         work_order_ids.append(work_order_id)
 
@@ -247,18 +311,23 @@ def insert_quality_control(session, work_order_id, work_center_name):
 
     session.execute(QualityControl.insert().values(
         OrderID=work_order_id,
-        Date=datetime.now().isoformat(),
+        Date=datetime.now(),
         Result=random.choice(['pass', 'fail', 'rework']),
-        Comments=random.choice(qc_comments[comment_category])
+        Comments=random.choice(qc_comments[comment_category]),
+        DefectRate=round(random.uniform(0, 0.05), 4),  # 0-5% defect rate
+        ReworkRate=round(random.uniform(0, 0.1), 4),   # 0-10% rework rate
+        YieldRate=round(random.uniform(0.9, 1), 4)     # 90-100% yield rate
     ))
 
 def insert_data():
     session = Session()
     try:
+        supplier_ids = insert_suppliers(session)
         product_ids = insert_products(session)
+        inventory_ids = insert_inventory(session, supplier_ids)
+        insert_bill_of_materials(session, product_ids, inventory_ids)
         work_center_ids = insert_work_centers(session)
         machine_ids = insert_machines(session, work_center_ids)
-        inventory_ids = insert_inventory(session)
         shift_ids = insert_shifts(session)
         employee_ids = insert_employees(session, shift_ids)
         work_order_ids = insert_work_orders(session, product_ids, work_center_ids, machine_ids, employee_ids)

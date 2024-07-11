@@ -252,5 +252,20 @@
       "Shipping box undamaged and correctly labeled",
       "Battery charge level within safe shipping range"
     ]
-  }
+  },
+  "suppliers": [
+    { "name": "Acme Electronics", "lead_time": 5 },
+    { "name": "BikeFrame Co.", "lead_time": 10 },
+    { "name": "Wheel Masters", "lead_time": 7 },
+    { "name": "Battery Tech", "lead_time": 14 },
+    { "name": "Control Systems Inc.", "lead_time": 8 }
+  ],
+  "cost_ranges": {
+    "products": { "min": 50, "max": 1000 },
+    "components": { "min": 1, "max": 100 },
+    "work_centers": { "min": 50, "max": 200 },
+    "machines": { "min": 20, "max": 100 }
+  },
+  "lead_time_range": { "min": 1, "max": 30 },
+  "employee_hourly_rate_range": { "min": 15, "max": 50 }
 }
