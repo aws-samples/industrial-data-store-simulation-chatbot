@@ -70,127 +70,35 @@ pip install -r requirements.txt
 
 ## 2. Creating the simulated MES
 
-This repository contains scripts to simulate a basic Manufacturing Execution System (MES) that manages and monitors the production process from raw materials to finished goods. The database structure is designed to track products, machinery, work orders, inventory levels, quality control, and employee details.
+This folder contains scripts to simulate a Manufacturing Execution System (MES) that manages and monitors the production process of an e-bike manufacturing facility. The simulated data provides a realistic foundation for testing and demonstrating SQL-based analytics and reporting capabilities.
 
-To create the database tables and populate them with synthetic data. From the project root directory, run:
+## 2.1 Database Structure
+
+The MES database includes tables for:
+
+- **Products**: E-bikes and their components
+- **Bill of Materials**: Component relationships and quantities
+- **Inventory**: Raw materials and components tracking
+- **Suppliers**: External vendor information
+- **Work Centers**: Manufacturing areas and their capabilities
+- **Machines**: Equipment specifications and maintenance schedules
+- **Employees**: Personnel records with roles and skills
+- **Work Orders**: Production jobs with schedules and status
+- **Quality Control**: Inspection results with defect details
+- **Material Consumption**: Component usage tracking
+- **Downtimes**: Machine downtime events and reasons
+- **OEE Metrics**: Overall Equipment Effectiveness measurements
+
+## 2.2 Creating the Database
+
+To create the database tables and populate them with synthetic data, run:
 
 ```bash
-# create tables and simulation data
+# Create tables and simulation data
 python3 MES-synthetic-data/sqlite-synthetic-mes-data.py
 ```
 
-> Note: The script can easily be updated to create more synthetic data. Every table provides an easy function that can be modified as needed.
-
-### Validate that the tables were successfully created
-
-After executing the `sqlite-synthetic-mes-data.py` script, which creates the SQLite database file `mes.db` and populates it with synthetic data, you can test and verify the database using the following steps:
-
-1. **Open the SQLite Command-line Tool**:
-
-    Open a terminal or command prompt, navigate to the `MES-synthetic-data` directory, and run the following command:
-
-    ```bash
-    sqlite3 mes.db
-    ```
-
-    This will open the SQLite command-line tool and connect to the `mes.db` database file.
-
-2. **List the Tables**:
-
-    Inside the SQLite command-line tool, list all the tables in the database by running:
-
-    ```sql
-    .tables
-    ```
-
-    You should see the following tables listed: `Products`, `Machines`, `WorkOrders`, `Inventory`, `QualityControl`, and `Employees`.
-
-3. **Query a Table**:
-
-    To check the content of a specific table, execute a `SELECT` query. For example, to retrieve the first 10 rows from the `Products` table:
-
-    ```sql
-    SELECT * FROM Products LIMIT 10;
-    ```
-
-    ![table list](assets/table-list.png)
-4. **Execute Custom Queries**:
-
-    You can run any other SQL queries to inspect the data in the other tables. For example:
-
-    ```sql
-    SELECT * FROM Machines LIMIT 5;
-    SELECT COUNT(*) FROM WorkOrders;
-    SELECT Name, Role FROM Employees WHERE Shift = 'morning';
-    ```
-
-5. **Exit the SQLite Command-line Tool**:
-
-    When you're done inspecting the data, exit the SQLite command-line tool by typing `.quit` or pressing `Ctrl+D`.
-
-This concludes the pre-requisites section and the system is now ready. An overview of the simulated MES is provided below.
-
-### Table Overview
-
-To better understand the data we are working with, here's an overview of each table and its role within the system:
-
-#### Products Table
-
-- **Purpose**: Stores information about the products being manufactured.
-- **Columns**:
-  - `ProductID`: A unique identifier for each product, automatically generated.
-  - `Name`: The name of the product, which is a required field.
-  - `Description`: A text description of the product, which is optional.
-
-#### Machines Table
-
-- **Purpose**: Contains details about the machinery used in the manufacturing process.
-- **Columns**:
-  - `MachineID`: The unique identifier for each machine, automatically generated.
-  - `Name`: The name of the machine.
-  - `Type`: The type or category of the machine.
-  - `Status`: The current status of the machine, restricted to 'running', 'idle', or 'maintenance' through a check constraint.
-
-#### Work Orders Table
-
-- **Purpose**: Tracks production work orders.
-- **Columns**:
-  - `OrderID`: A unique identifier for each work order, automatically generated.
-  - `ProductID`: A reference to the `ProductID` in the Products table.
-  - `Quantity`: The number of units to be produced, must be greater than 0.
-  - `StartDate`: The start date of the work order.
-  - `EndDate`: The expected end date of the work order.
-  - `Status`: The current status of the work order.
-
-#### Inventory Table
-
-- **Purpose**: Manages inventory items, including materials or components.
-- **Columns**:
-  - `ItemID`: A unique identifier for each inventory item, automatically generated.
-  - `Name`: The name of the inventory item.
-  - `Quantity`: The current quantity in stock, must be non-negative.
-  - `ReorderLevel`: The quantity at which more of the item should be ordered, also must be non-negative.
-
-#### Quality Control Table
-
-- **Purpose**: Records the outcomes of quality control checks for work orders.
-- **Columns**:
-  - `CheckID`: A unique identifier for each quality control check, automatically generated.
-  - `OrderID`: A reference to the `OrderID` in the Work Orders table.
-  - `Date`: The date when the quality control check was performed.
-  - `Result`: The result of the quality control check.
-  - `Comments`: Optional comments about the check.
-
-#### Employees Table
-
-- **Purpose**: Stores details about employees involved in the manufacturing process.
-- **Columns**:
-  - `EmployeeID`: A unique identifier for each employee, automatically generated.
-  - `Name`: The name of the employee.
-  - `Role`: The role or job title of the employee.
-  - `Shift`: The work shift of the employee.
-
-This database structure is designed to facilitate the coordination and optimization of the production process, tracking key components of a manufacturing execution system.
+For additional details on how to modify the simulation, use the `--help` argument and consult the simulator detailed info [here](MES-synthetic-data/mes-simulation.md)
 
 ## 3. Chatbot Interface
 
@@ -214,7 +122,7 @@ streamlit run chatbot/Chat.py
 
 > If running this example in AWS Cloud9, append `--server.port 8080` so you can access the streamlit app by clicking `Preview -> Preview Running Application` from the menu at the top of the screen. This way, you can access it securely without exposing any ports to the internet.
 
-> If running this example in Amazon SageMaker Studio JupyterLab, you can access the streamlit app through the proxy on `https://{domainId}.studio.{region}.sagemaker.aws/jupyter/default/proxy/{port}/`, e.g. `https://d-abcd12345xyz.studio.us-east-1.sagemaker.aws/jupyter/default/proxy/8501/`. Make sure to include the trailing forward slash.
+> If running this example in Amazon SageMaker Studio JupyterLab, you can access the streamlit app through the proxy on `https://{domainId}.studio.{region}.sagemaker.aws/jupyterlab/default/proxy/{port}/`, e.g. `https://d-abcd12345xyz.studio.us-east-1.sagemaker.aws/jupyterlab/default/proxy/8501/`. Make sure to include the trailing forward slash.
 
 On the sidebar (left-hand side), you can reset the chat to clear the chat history and ask a new question. You can use one of the example questions provided or ask your own in the chat box at the bottom.
 
