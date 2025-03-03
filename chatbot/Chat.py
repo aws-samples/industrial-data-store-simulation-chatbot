@@ -36,31 +36,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    /* Factory emoji animation */
-    .factory-emoji {
-        display: inline-block;
-        animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-        100% { transform: scale(1); }
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Header with animated factory icon
-st.markdown("""
-<div style="display: flex; align-items: center; margin-bottom: 20px;">
-    <h1 style="margin-right: 15px;">MES Insight Chat</h1>
-    <div class="factory-emoji" style="font-size: 32px;">⚙️</div>
-</div>
-""", unsafe_allow_html=True)
-
+st.header(":brain: MES Insight Chat :brain:")
 st.markdown("""
 This interactive chatbot helps you analyze data from our Manufacturing Execution System (MES).
 Ask questions about production processes, inventory, machine status, quality control, and more.
