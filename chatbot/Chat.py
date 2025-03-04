@@ -84,10 +84,8 @@ def get_available_bedrock_models(client=None):
         2. Support Converse API
         3. Support tool use
     """
-    import boto3
-    
-    # Define models that support both Converse API and tool use based on documentation
-    # These are Inference Profile IDs (what you use in API calls) - they include region prefixes where applicable
+        
+    # models that support both Converse API and tool use based on documentation https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html
     MODELS_WITH_TOOL_USE = {
         # Anthropic models (don't use region prefix)
         "anthropic.claude-3-sonnet-20240229-v1:0": {
@@ -235,8 +233,6 @@ def get_available_bedrock_models(client=None):
         # Return a default list of models that are likely to be available
         default_models = [
             {"id": "anthropic.claude-3-haiku-20240307-v1:0", "name": "Claude 3 Haiku", "provider": "Anthropic"},
-            {"id": "anthropic.claude-3-sonnet-20240229-v1:0", "name": "Claude 3 Sonnet", "provider": "Anthropic"},
-            {"id": "us.amazon.nova-micro-v1:0", "name": "Nova Micro", "provider": "Amazon"},
             {"id": "us.amazon.nova-lite-v1:0", "name": "Nova Lite", "provider": "Amazon"},
         ]
         return default_models
