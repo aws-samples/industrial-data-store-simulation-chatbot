@@ -70,6 +70,218 @@ def get_bedrock_client():
         region_name=os.getenv("AWS_REGION", "us-east-1"),
         endpoint_url=f'https://bedrock-runtime.{os.getenv("AWS_REGION", "us-east-1")}.amazonaws.com',
     )
+# dynamic model display - no way to get the list of models that allow tool use directly in boto3, so mapping from the documentation and aligning with what the use has access to (enabled)
+def get_available_bedrock_models(client=None):
+    """
+    Retrieves all Bedrock models available to the user that support tool use with the Converse API.
+    
+    Args:
+        client: An optional boto3 bedrock client. If not provided, a new one will be created.
+        
+    Returns:
+        A list of dictionaries containing model details (id, name, provider) for models that:
+        1. Are accessible to the user account
+        2. Support Converse API
+        3. Support tool use
+    """
+        
+    # models that support both Converse API and tool use based on documentation https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html
+    MODELS_WITH_TOOL_USE = {
+        # Anthropic models (don't use region prefix)
+        "anthropic.claude-3-sonnet-20240229-v1:0": {
+            "name": "Claude 3 Sonnet",
+            "provider": "Anthropic"
+        },
+        "anthropic.claude-3-haiku-20240307-v1:0": {
+            "name": "Claude 3 Haiku",
+            "provider": "Anthropic"
+        },
+        "anthropic.claude-3-opus-20240229-v1:0": {
+            "name": "Claude 3 Opus",
+            "provider": "Anthropic"
+        },
+        "anthropic.claude-3-5-sonnet-20240620-v1:0": {
+            "name": "Claude 3.5 Sonnet",
+            "provider": "Anthropic"
+        },
+        "anthropic.claude-3-5-sonnet-20240620-v1:0": {
+            "name": "Claude 3.5 Sonnet v2",
+            "provider": "Anthropic"
+        },
+        "anthropic.claude-3-7-sonnet-20250219": {
+            "name": "Claude 3.7 Sonnet",
+            "provider": "Anthropic"
+        },
+        # Amazon models (use region prefix)
+        "us.amazon.nova-pro-v1:0": {
+            "name": "Amazon Nova Pro",
+            "provider": "Amazon",
+            "base_model_id": "amazon.nova-pro-v1:0"  # Base model ID without region prefix
+        },
+        "us.amazon.nova-lite-v1:0": {
+            "name": "Amazon Nova Lite",
+            "provider": "Amazon",
+            "base_model_id": "amazon.nova-lite-v1:0"
+        },
+        "us.amazon.nova-micro-v1:0": {
+            "name": "Amazon Nova Micro",
+            "provider": "Amazon",
+            "base_model_id": "amazon.nova-micro-v1:0"
+        },
+        # AI21 models
+        "ai21.jamba-1-5-mini-v1:0": {
+            "name": "Jamba 1.5 Mini",
+            "provider": "AI21"
+        },
+        "ai21.jamba-1-5-large-v1:0": {
+            "name": "Jamba 1.5 Large",
+            "provider": "AI21"
+        },
+        # Cohere models 
+        "cohere.command-r-v1:0": {
+            "name": "Command R",
+            "provider": "Cohere"
+        },
+        "cohere.command-r-plus-v1:0": {
+            "name": "Command R+",
+            "provider": "Cohere"
+        },
+        # Mistral models
+        "mistral.mistral-large-v1:0": {
+            "name": "Mistral Large",
+            "provider": "Mistral AI"
+        },
+        "mistral.mistral-large-2-v1:0": {
+            "name": "Mistral Large 2",
+            "provider": "Mistral AI"
+        },
+        "mistral.mistral-small-v1:0": {
+            "name": "Mistral Small",
+            "provider": "Mistral AI"
+        },
+        # Meta models
+        "meta.llama3-1-405b-instruction-v1:0": {
+            "name": "Llama 3.1 405B",
+            "provider": "Meta"
+        },
+        "meta.llama3-1-70b-instruction-v1:0": {
+            "name": "Llama 3.1 70B",
+            "provider": "Meta"
+        },
+        "meta.llama3-2-11b-instruct-v1:0": {
+            "name": "Llama 3.2 11B",
+            "provider": "Meta"
+        },
+        "meta.llama3-2-90b-instruct-v1:0": {
+            "name": "Llama 3.2 90B",
+            "provider": "Meta"
+        }
+    }
+    
+    # Create a Bedrock client if not provided
+    if client is None:
+        import os
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        client = boto3.client(
+            service_name='bedrock',  # Use bedrock service (not bedrock-runtime)
+            region_name=os.getenv("AWS_REGION", "us-east-1")
+        )
+    
+    try:
+        # List all foundation models available to the user
+        response = client.list_foundation_models()
+        
+        # Filter models that are both available to the user and in our tool use list
+        available_models = []
+        
+        for model in response['modelSummaries']:
+            model_id = model['modelId']  # This is the base Model ID from the API
+            
+            # For Amazon models, we need to map from base Model ID to Inference Profile ID
+            inference_id = None
+            
+            # Direct match (for most models)
+            if model_id in MODELS_WITH_TOOL_USE:
+                inference_id = model_id
+            
+            # Check for Amazon models that need region prefix
+            for tool_model_id, info in MODELS_WITH_TOOL_USE.items():
+                if "base_model_id" in info and info["base_model_id"] == model_id:
+                    inference_id = tool_model_id
+                    break
+            
+            # If we found a matching inference ID that supports tool use
+            if inference_id and inference_id in MODELS_WITH_TOOL_USE:
+                # Check if the model is accessible to the user (inferenceTypes contains "ON_DEMAND")
+                if model.get('inferenceTypesSupported') and 'ON_DEMAND' in model.get('inferenceTypesSupported'):
+                    # Add to available models
+                    model_info = MODELS_WITH_TOOL_USE[inference_id].copy()
+                    model_info['id'] = inference_id  # Store the Inference Profile ID for API calls
+                    model_info['base_id'] = model_id  # Also store the base Model ID for reference
+                    available_models.append(model_info)
+        
+        # Sort models by provider and name for better display
+        available_models.sort(key=lambda x: (x['provider'], x['name']))
+        
+        return available_models
+        
+    except Exception as e:
+        import logging
+        logging.error(f"Error retrieving available models: {e}")
+        # Return a default list of models that are likely to be available
+        default_models = [
+            {"id": "anthropic.claude-3-haiku-20240307-v1:0", "name": "Claude 3 Haiku", "provider": "Anthropic"},
+            {"id": "us.amazon.nova-lite-v1:0", "name": "Nova Lite", "provider": "Amazon"},
+        ]
+        return default_models
+
+def display_model_capabilities(available_models):
+    """
+    Displays model capabilities in a clean table format.
+    
+    Args:
+        available_models: List of model dictionaries from get_available_bedrock_models()
+    """
+    if not available_models:
+        st.info("No models with tool use capabilities are currently available.")
+        return
+    
+    # Group models by provider
+    providers = {}
+    for model in available_models:
+        provider = model['provider']
+        if provider not in providers:
+            providers[provider] = []
+        providers[provider].append(model)
+    
+    # Create a DataFrame for each provider
+    for provider, models in providers.items():
+        st.subheader(f"{provider} Models")
+        
+        # Create DataFrame with model details
+        model_data = {
+            "Model": [m['name'] for m in models],
+            "Inference Profile ID": [m['id'] for m in models]
+        }
+        
+        # Add base Model ID if available
+        if 'base_id' in models[0]:
+            model_data["Base Model ID"] = [m.get('base_id', "N/A") for m in models]
+        
+        df = pd.DataFrame(model_data)
+        
+        # Display as a table
+        st.dataframe(df, hide_index=True, use_container_width=True)
+        
+    # Add note about capability requirements
+    st.markdown("""
+    **Note**: All models shown above support:
+    - Converse API
+    - Tool use functionality
+    - Are enabled for your account
+    """)
 
 # Define a function to reset the chat
 def reset_chat():
@@ -406,17 +618,83 @@ with st.sidebar:
         key='temperature'
     )
     
-    model_id = st.selectbox(
-        'Select AI Model:',
-        ["anthropic.claude-3-haiku-20240307-v1:0", 
-         "anthropic.claude-3-sonnet-20240229-v1:0",
-         "us.amazon.nova-micro-v1:0", 
-         "us.amazon.nova-lite-v1:0", 
-         "us.amazon.nova-pro-v1:0"],
-        index=0,
-        key='model_id',
-        help="Different models have different capabilities and speeds"
-    )
+    # Get available bedrock models with tool use capability
+    try:
+        bedrock_client = boto3.client(
+            service_name='bedrock',
+            region_name=os.getenv("AWS_REGION", "us-east-1")
+        )
+        
+        # Get all available models that support tool use
+        available_models = get_available_bedrock_models(bedrock_client)
+        
+        # Format models for display in selectbox
+        model_options = []
+        model_ids = []
+        
+        # Group models by provider
+        models_by_provider = {}
+        for model in available_models:
+            provider = model['provider']
+            if provider not in models_by_provider:
+                models_by_provider[provider] = []
+            models_by_provider[provider].append(model)
+        
+        # Create formatted options with provider groups
+        for provider in sorted(models_by_provider.keys()):
+            for model in models_by_provider[provider]:
+                # Format as "Provider - Model Name"
+                display_name = f"{provider} - {model['name']}"
+                model_options.append(display_name)
+                model_ids.append(model['id'])
+        
+        # If no models found, provide sensible defaults
+        if not model_options:
+            model_options = ["Anthropic - Claude 3 Haiku", "Anthropic - Claude 3 Sonnet", 
+                             "Amazon - Nova Micro", "Amazon - Nova Lite"]
+            model_ids = ["anthropic.claude-3-haiku-20240307-v1:0", "anthropic.claude-3-sonnet-20240229-v1:0",
+                         "us.amazon.nova-micro-v1:0", "us.amazon.nova-lite-v1:0"]
+        
+        # Find the default model to select (prefer Claude 3 Haiku if available)
+        default_index = 0  # Default to first model if preferred models not found
+        preferred_models = ["anthropic.claude-3-haiku-20240307-v1:0", "us.amazon.nova-micro-v1:0"]
+        
+        for preferred_id in preferred_models:
+            if preferred_id in model_ids:
+                default_index = model_ids.index(preferred_id)
+                break
+        
+        # Present model selection to user
+        selected_option = st.selectbox(
+            'Select AI Model:',
+            options=model_options,
+            index=default_index,
+            key='model_display',
+            help="Select from models that support tool use and are enabled for your account"
+        )
+        
+        # Get the actual model ID from the selected option
+        selected_index = model_options.index(selected_option)
+        model_id = model_ids[selected_index]
+        
+        # Add expander to show all available models with capabilities
+        with st.expander("Available Models & Capabilities"):
+            display_model_capabilities(available_models)
+        
+    except Exception as e:
+        logging.error(f"Error setting up model selection: {e}")
+        # Fallback to static model selection
+        model_id = st.selectbox(
+            'Select AI Model:',
+            ["anthropic.claude-3-haiku-20240307-v1:0", 
+             "anthropic.claude-3-sonnet-20240229-v1:0",
+             "us.amazon.nova-micro-v1:0", 
+             "us.amazon.nova-lite-v1:0", 
+             "us.amazon.nova-pro-v1:0"],
+            index=0,
+            key='model_id',
+            help="Different models have different capabilities and speeds"
+        )
     
     query_timeout = st.slider(
         label='Query Timeout (seconds)',
@@ -463,43 +741,16 @@ with main_col:
     # Load example questions
     try:
         with open('sample_questions.json', 'r', encoding="utf-8") as file:
-            example_questions = json.load(file)
-            question_list = list(example_questions.values())
+            question_data = json.load(file)
+            question_list = list(question_data['general'].values())
+            category_questions = question_data['categories']
     except Exception as e:
         st.error(f"Error loading example questions: {e}")
         question_list = []
+        category_questions = {}
 
     # Example questions in categorized buttons
     st.subheader("Example Questions")
-    
-    category_questions = {
-        "🏭 Production": [
-            "What's our current production schedule for the next week?",
-            "Show me all completed work orders for eBike T101",
-            "Which assembly line has the highest production rate?",
-            "What's our on-time delivery rate for completed orders?"
-        ],
-        "📦 Inventory": [
-            "Which inventory items are below reorder level?",
-            "What components are used in the eBike T101?",
-            "Which supplier provides our battery components?",
-            "Calculate the total value of current inventory"
-        ],
-        "🔧 Machines": [
-            "Which machines are due for maintenance in the next 7 days?",
-            "What's the OEE for our welding machines?",
-            "Which equipment has the most downtime?",
-            "Show me the efficiency trends for the Final Assembly machines"
-        ],
-        "⚠️ Quality": [
-            "What's our overall defect rate across all products?",
-            "Show me the most common defect types for ebikes",
-            "Which work centers have the highest scrap rates?",
-            "Compare quality metrics between different work shifts"
-        ]
-    }
-    
-    # Display categorized question buttons
     col1, col2 = st.columns(2)
     
     with col1:

@@ -1,22 +1,72 @@
 {
-  "work_orders": "Show me the current work orders and their status",
-  "production_stats": "What's our production output for completed work orders in the last 30 days?",
-  "inventory_status": "Which inventory items are below their reorder level?",
-  "machines_maintenance": "Which machines are due for maintenance in the next week?",
-  "quality_control": "What are our most common defect types from quality control inspections?",
-  "employee_productivity": "Who are our most productive operators based on completed work orders?",
-  "material_consumption": "Show me material usage variance for eBike production",
-  "oee_metrics": "What's the OEE trend for our assembly lines over the past month?",
-  "downtime_analysis": "Which work centers have the most unplanned downtime?",
-  "bom_analysis": "What components go into the eBike T101 and what's their total cost?",
-  "machine_efficiency": "Which machines have the highest and lowest efficiency factors?",
-  "quality_by_shift": "Compare quality metrics between different work shifts",
-  "work_center_capacity": "What's the current utilization of our work centers?",
-  "schedule_adherence": "What percentage of our work orders are completed on time?",
-  "inventory_value": "What's the total value of our current inventory?",
-  "defect_rate": "What's our overall defect rate across different products?",
-  "supplier_performance": "Which suppliers have the longest lead times?",
-  "production_bottlenecks": "Where are the bottlenecks in our production process?",
-  "component_usage": "Which components are used in the most products?",
-  "machine_status": "Show me the current status of all machines"
+  "categories": {
+    "🏭 Production": [
+      "What's our current production schedule for the next week?",
+      "Show me all completed work orders for eBike T101",
+      "Which work center has the highest production volume?",
+      "What's our on-time completion rate for completed orders?",
+      "What's the current status distribution of all work orders?",
+      "Which products have the highest production quantities this month?"
+    ],
+    "📦 Inventory": [
+      "Which inventory items are below their reorder level?",
+      "What components are used in the eBike T101?",
+      "Which supplier provides our battery components?",
+      "Calculate the total value of current inventory",
+      "Which inventory items have the longest lead times?",
+      "Show me inventory items with quantity less than 100 units"
+    ],
+    "🔧 Machines": [
+      "Which machines are due for maintenance in the next 7 days?",
+      "What's the OEE for our Frame Welding machines?",
+      "Which machine has the most unplanned downtime?",
+      "Show me the efficiency trends for the Final Assembly machines",
+      "Compare the availability metrics across all machine types",
+      "Which machines have efficiency factors below 0.85?"
+    ],
+    "⚠️ Quality": [
+      "What's our overall defect rate by product category?",
+      "Show me the most common defect types and their severity",
+      "Which work centers have the highest scrap rates?",
+      "Compare quality metrics between morning and afternoon shifts",
+      "What products have the highest yield rates?",
+      "Which inspectors report the most defects?"
+    ],
+    "👥 Personnel": [
+      "Who are our most productive operators based on completed work orders?",
+      "Which employees have the highest hourly rates?",
+      "Show me the distribution of employees across different shifts",
+      "What's the average tenure of our technicians?",
+      "Which operators are assigned to Final Assembly work centers?"
+    ],
+    "⏱️ Performance": [
+      "What are our top bottleneck machines based on downtime?",
+      "Which suppliers have the best reliability scores?",
+      "Show material consumption variance for the most recent eBike T101 orders",
+      "What's our average setup time across different machine types?",
+      "Compare actual vs. planned production times across work centers"
+    ]
+  },
+  "general": {
+    "work_orders": "Show me the current work orders and their status",
+    "production_stats": "What's our production output for completed work orders in the last 30 days?",
+    "inventory_status": "Which inventory items are below their reorder level?",
+    "machines_maintenance": "Which machines are due for maintenance in the next week?",
+    "quality_control": "What are our most common defect types and their severity?",
+    "employee_productivity": "Who are our most productive operators based on completed work orders?",
+    "material_consumption": "Show me material usage variance for eBike T101 production",
+    "oee_metrics": "What's the OEE trend for our assembly lines over the past month?",
+    "downtime_analysis": "Which machines have the most unplanned downtime?",
+    "bom_analysis": "What components go into the eBike T101 and what's their total cost?",
+    "machine_efficiency": "Which machines have the highest and lowest efficiency factors?",
+    "quality_by_shift": "Compare quality metrics between different work shifts",
+    "work_center_capacity": "What's the current utilization of our work centers?",
+    "schedule_adherence": "What percentage of our work orders are completed on time?",
+    "inventory_value": "What's the total value of our current inventory?",
+    "defect_rate": "What's our overall defect rate across different products?",
+    "supplier_performance": "Which suppliers have the longest lead times and lowest reliability?",
+    "production_bottlenecks": "Which work centers have the lowest throughput?",
+    "component_usage": "Which components are used in the most products?",
+    "machine_status": "Show me the current status distribution of all machines"
+  }
 }
