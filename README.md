@@ -6,6 +6,10 @@ This project provides a conversational interface to query a Manufacturing Execut
 
 The implementation includes a simulated MES database for an e-bike manufacturer and a Streamlit-based chat interface. The system uses the Amazon Bedrock Converse API with tool-calling capabilities to generate and execute SQL queries, then present the results in an easy-to-understand format.
 
+![MES chatbot UI](assets/mes-chatbot-example-screenshot.png)
+
+## High-level Architecture Pattern
+
 ![MES System Architecture](assets/MES-chatbot-sys-architecture.png)
 
 ## Repo Content
