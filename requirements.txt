@@ -7,12 +7,3 @@ streamlit==1.42.0
 boto3>=1.37.4
 python-dotenv>=1.0.1
 plotly>=6.0.0 # for the Chart view tab 
-
-
-#notebook - legacy need to refactor the notebook and remove
-langchain==0.1.11 # now only for the notebooks. No need for the chatbot
-langchain-community==0.0.27 # now only for the notebooks. No need for the chatbot
-langchain-core==0.1.35 # now only for the notebooks. No need for the chatbot
-sqlparse==0.5.0 # now only for the notebooks. No need for the chatbot
-anthropic_bedrock # now only for the notebooks. No need for the chatbot
-pydantic==1.10.13 # now only for the notebooks. No need for the chatbot

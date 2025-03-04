@@ -37,7 +37,7 @@ See [Model access documentation](https://docs.aws.amazon.com/bedrock/latest/user
 
 ### 1. Environment Setup
 
-If using Amazon SageMaker Studio JupyterLab (recommended), you can skip to step 1.2.
+If using Amazon SageMaker AI JupyterLab (recommended), you can skip to step 1.2.
 
 Create and activate a Python virtual environment:
 
@@ -110,7 +110,7 @@ The Streamlit application demonstrates natural language interaction with the MES
 streamlit run chatbot/Chat.py
 ```
 
-**For SageMaker Studio JupyterLab**:
+**For SageMaker JupyterLab**:
 The Jupyter Server comes with a proxy and allows us to access our Streamlit app. Once the app is running, the user can initiate a separate session through the AWS Jupyter Proxy by adjusting the URL.
 
 From a security aspect, the AWS Jupyter Proxy is extended by AWS authentication. As long as a user has access to the AWS account, Studio domain ID, and user profile, they can access the link. Access the streamlit application by modifying the Studio URL, replacing `lab?` with `proxy/[PORT NUMBER]/`
