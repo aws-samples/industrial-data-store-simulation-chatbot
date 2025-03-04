@@ -745,43 +745,16 @@ with main_col:
     # Load example questions
     try:
         with open('sample_questions.json', 'r', encoding="utf-8") as file:
-            example_questions = json.load(file)
-            question_list = list(example_questions.values())
+            question_data = json.load(file)
+            question_list = list(question_data['general'].values())
+            category_questions = question_data['categories']
     except Exception as e:
         st.error(f"Error loading example questions: {e}")
         question_list = []
+        category_questions = {}
 
     # Example questions in categorized buttons
     st.subheader("Example Questions")
-    
-    category_questions = {
-        "🏭 Production": [
-            "What's our current production schedule for the next week?",
-            "Show me all completed work orders for eBike T101",
-            "Which assembly line has the highest production rate?",
-            "What's our on-time delivery rate for completed orders?"
-        ],
-        "📦 Inventory": [
-            "Which inventory items are below reorder level?",
-            "What components are used in the eBike T101?",
-            "Which supplier provides our battery components?",
-            "Calculate the total value of current inventory"
-        ],
-        "🔧 Machines": [
-            "Which machines are due for maintenance in the next 7 days?",
-            "What's the OEE for our welding machines?",
-            "Which equipment has the most downtime?",
-            "Show me the efficiency trends for the Final Assembly machines"
-        ],
-        "⚠️ Quality": [
-            "What's our overall defect rate across all products?",
-            "Show me the most common defect types for ebikes",
-            "Which work centers have the highest scrap rates?",
-            "Compare quality metrics between different work shifts"
-        ]
-    }
-    
-    # Display categorized question buttons
     col1, col2 = st.columns(2)
     
     with col1:
