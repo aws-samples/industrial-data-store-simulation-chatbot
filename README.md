@@ -8,6 +8,12 @@ The implementation includes a simulated MES database for an e-bike manufacturer 
 
 ![MES System Architecture](assets/MES-chatbot-sys-architecture.png)
 
+## Repo Content
+This repository contains the following:
+- [A simulation MES system based on SQLite](MES-synthetic-data/mes-simulation.md)
+- [A streamlit-based chatbot](chatbot)
+- [A Jupyter notebook](text-to-sql-notebook.ipynb) that can be used for educational purposes to understand the patterns used in this chatbot
+
 ## Key Capabilities
 
 The chatbot interface enables users to:
@@ -28,8 +34,9 @@ The chatbot interface enables users to:
 
 This project uses foundation models from Amazon Bedrock. You'll need to enable access to:
 
-- **Claude 3 models**: Haiku (recommended for smaller schemas) or Sonnet (for complex schemas)
+- **Claude 3 models**: Haiku or Sonnet
 - **Amazon Nova models**: Supported models include Nova Micro, Nova Lite, and Nova Pro
+If you only have access to a subset of those models, the application will work, but you will need to select a model you have access to.
 
 See [Model access documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) to enable model access in your AWS account.
 
