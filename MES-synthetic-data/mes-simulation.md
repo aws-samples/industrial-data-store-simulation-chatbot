@@ -72,12 +72,9 @@ sqlite3 mes.db
 
 ## Data Relationships
 
-The simulated data maintains realistic relationships:
-
+This simulated MES database has built-in relationship to allow for better representation of a real system and help demonstrate how the chatbot from this repo can help get insights from this somewhat complex database.
 - Products are built from components listed in the bill of materials
 - Work orders consume materials according to the bill of materials
 - Quality issues and defects are linked to specific work orders
 - Machine downtimes impact production schedules and OEE metrics
 - Maintenance schedules affect machine availability
-
-This interconnected data structure allows for complex analytical queries that reflect real manufacturing environments.
