@@ -1,0 +1,248 @@
+{
+    "templates": {
+      "standard_production_meeting": {
+        "name": "Standard Daily Production Meeting",
+        "duration": 15,
+        "sections": [
+          {
+            "name": "Safety Share",
+            "description": "Brief safety topic or reminder",
+            "time_allocated": 1,
+            "prompts": [
+              "Any safety incidents in the last 24 hours?",
+              "Safety observations or near-misses to share?",
+              "Safety topic of the day"
+            ]
+          },
+          {
+            "name": "Production Review",
+            "description": "Yesterday's production performance vs. targets",
+            "time_allocated": 4,
+            "prompts": [
+              "What was our target vs. actual output?",
+              "What were the main challenges affecting production?",
+              "Which products exceeded or missed targets and why?"
+            ]
+          },
+          {
+            "name": "Quality Issues",
+            "description": "Key quality metrics and issues",
+            "time_allocated": 3,
+            "prompts": [
+              "What is our current defect rate?",
+              "Are there any recurring quality issues?",
+              "What countermeasures are we implementing?"
+            ]
+          },
+          {
+            "name": "Equipment Status",
+            "description": "Machine availability and maintenance",
+            "time_allocated": 3,
+            "prompts": [
+              "What is our current equipment availability?",
+              "Any machines down or in maintenance?",
+              "Upcoming planned maintenance activities"
+            ]
+          },
+          {
+            "name": "Material/Inventory Issues",
+            "description": "Inventory constraints and shortages",
+            "time_allocated": 2,
+            "prompts": [
+              "Any material shortages affecting production?",
+              "Inventory items below reorder level",
+              "Expected deliveries today"
+            ]
+          },
+          {
+            "name": "Action Items",
+            "description": "Review open actions and assign new ones",
+            "time_allocated": 2,
+            "prompts": [
+              "Update on previously assigned actions",
+              "New action items to be assigned",
+              "Urgent issues requiring immediate attention"
+            ]
+          }
+        ]
+      },
+      "shift_handover": {
+        "name": "Shift Handover Meeting",
+        "duration": 10,
+        "sections": [
+          {
+            "name": "Safety & Quality",
+            "description": "Safety incidents and quality issues",
+            "time_allocated": 2,
+            "prompts": [
+              "Safety incidents or near-misses during shift",
+              "Quality issues encountered",
+              "Quality holds or quarantined material"
+            ]
+          },
+          {
+            "name": "Production Status",
+            "description": "Work orders status and progress",
+            "time_allocated": 3,
+            "prompts": [
+              "Work orders completed",
+              "Work in progress and percent complete",
+              "Production vs target for the shift"
+            ]
+          },
+          {
+            "name": "Equipment Status",
+            "description": "Machine condition and issues",
+            "time_allocated": 2,
+            "prompts": [
+              "Equipment problems encountered",
+              "Maintenance performed during shift",
+              "Equipment requiring attention next shift"
+            ]
+          },
+          {
+            "name": "Handover Items",
+            "description": "Critical information for next shift",
+            "time_allocated": 3,
+            "prompts": [
+              "Priority work for next shift",
+              "Pending issues requiring follow-up",
+              "Special instructions or considerations"
+            ]
+          }
+        ]
+      },
+      "weekly_production_planning": {
+        "name": "Weekly Production Planning",
+        "duration": 30,
+        "sections": [
+          {
+            "name": "Previous Week Review",
+            "description": "Performance review of previous week",
+            "time_allocated": 5,
+            "prompts": [
+              "Production targets vs actuals",
+              "Key challenges and successes",
+              "Quality and delivery performance"
+            ]
+          },
+          {
+            "name": "Upcoming Orders",
+            "description": "New orders and production schedule",
+            "time_allocated": 8,
+            "prompts": [
+              "Customer orders to be scheduled",
+              "Production priorities for the week",
+              "Capacity planning and constraints"
+            ]
+          },
+          {
+            "name": "Resource Planning",
+            "description": "Staff, equipment, and materials",
+            "time_allocated": 7,
+            "prompts": [
+              "Staffing requirements and availability",
+              "Equipment availability and maintenance schedules",
+              "Material requirements and inventory status"
+            ]
+          },
+          {
+            "name": "Continuous Improvement",
+            "description": "Improvement initiatives and projects",
+            "time_allocated": 5,
+            "prompts": [
+              "Status of ongoing improvement projects",
+              "New improvement opportunities identified",
+              "Resources required for implementation"
+            ]
+          },
+          {
+            "name": "Action Planning",
+            "description": "Assign actions and responsibilities",
+            "time_allocated": 5,
+            "prompts": [
+              "Review of open actions",
+              "New actions to be assigned",
+              "Critical path items and dependencies"
+            ]
+          }
+        ]
+      }
+    },
+    "kpi_definitions": {
+      "production": {
+        "completion_rate": {
+          "name": "Production Completion Rate",
+          "description": "Percentage of planned production actually completed",
+          "formula": "ActualProduction / PlannedQuantity * 100",
+          "target": 95,
+          "warning_threshold": 90,
+          "critical_threshold": 85
+        },
+        "schedule_adherence": {
+          "name": "Schedule Adherence",
+          "description": "Percentage of work orders completed on time",
+          "formula": "OnTimeOrders / TotalOrders * 100",
+          "target": 90,
+          "warning_threshold": 85,
+          "critical_threshold": 80
+        }
+      },
+      "quality": {
+        "first_pass_yield": {
+          "name": "First Pass Yield",
+          "description": "Percentage of products that pass inspection on first attempt",
+          "formula": "PassCount / InspectionCount * 100",
+          "target": 95,
+          "warning_threshold": 90,
+          "critical_threshold": 85
+        },
+        "defect_rate": {
+          "name": "Defect Rate",
+          "description": "Percentage of defective products",
+          "formula": "DefectiveCount / TotalProduction * 100",
+          "target": 2,
+          "warning_threshold": 3,
+          "critical_threshold": 5,
+          "lower_is_better": true
+        }
+      },
+      "equipment": {
+        "availability": {
+          "name": "Equipment Availability",
+          "description": "Percentage of time equipment is available for production",
+          "formula": "UpTime / TotalTime * 100",
+          "target": 90,
+          "warning_threshold": 85,
+          "critical_threshold": 80
+        },
+        "oee": {
+          "name": "Overall Equipment Effectiveness",
+          "description": "Combined measure of availability, performance, and quality",
+          "formula": "Availability * Performance * Quality",
+          "target": 85,
+          "warning_threshold": 75,
+          "critical_threshold": 65
+        }
+      },
+      "inventory": {
+        "stock_coverage": {
+          "name": "Inventory Coverage",
+          "description": "Days of inventory on hand",
+          "formula": "CurrentInventory / AverageDailyUsage",
+          "target": "Varies by item",
+          "warning_threshold": "Varies by item",
+          "critical_threshold": "Varies by item"
+        },
+        "shortage_events": {
+          "name": "Material Shortage Events",
+          "description": "Count of production interruptions due to material shortages",
+          "formula": "Count of shortage events",
+          "target": 0,
+          "warning_threshold": 1,
+          "critical_threshold": 3,
+          "lower_is_better": true
+        }
+      }
+    }
+  }

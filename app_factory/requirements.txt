@@ -1,0 +1,11 @@
+# Core dependencies
+streamlit>=1.42.0
+pandas>=2.2.0
+numpy>=1.24.0
+plotly>=6.0.0
+python-dotenv>=1.0.0
+boto3>=1.37.0
+
+# For the database generator
+Faker>=22.0.0
+SQLAlchemy>=2.0.0

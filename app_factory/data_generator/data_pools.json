@@ -1,0 +1,337 @@
+{
+  "inventory_names": [
+    "Aluminum Tubing",
+    "Steel Bolts",
+    "Rubber Grips",
+    "Brake Cables",
+    "Gear Shifters",
+    "Ball Bearings",
+    "Wheel Spokes",
+    "Tire Rubber",
+    "Chain Links",
+    "Pedal Assemblies",
+    "Lithium-ion Cells",
+    "Electric Motors",
+    "Control Circuits",
+    "Seat Padding",
+    "Handlebar Tubing",
+    "Brake Pads",
+    "Derailleur Springs",
+    "Gear Cogs",
+    "Bottom Bracket Shells",
+    "Battery Casings",
+    "Motor Magnets",
+    "Microcontrollers",
+    "Frame Paint",
+    "Lubricating Oil",
+    "Suspension Forks",
+    "Rim Strips",
+    "Valve Stems",
+    "Chainring Bolts",
+    "Dropout Hangers",
+    "Hydraulic Fluid"
+  ],
+  "product_names": [
+    "eBike T101",
+    "eBike T200",
+    "eBike C150",
+    "eBike M300",
+    "Forks",
+    "Frame",
+    "Seat",
+    "Handlebar",
+    "Bearings",
+    "Wheels",
+    "Wheel",
+    "Thru_Axle",
+    "Tires",
+    "Drive_Train",
+    "Cassette",
+    "Crank",
+    "Brakes",
+    "Brake_Lever",
+    "Gear_Lever",
+    "Front_Derailleur",
+    "Rear_Derailleur",
+    "Chain",
+    "Bottom_Bracket",
+    "Battery",
+    "Motor",
+    "Control_Unit",
+    "Bolt",
+    "Washer",
+    "Motor_Assembly",
+    "MRO_Part1",
+    "MRO_Part2",
+    "MRO_Part3"
+  ],
+  "product_descriptions": [
+    "eBike T101: High-performance electric bicycle with advanced components and sleek design",
+    "eBike T200: Premium mountain e-bike with rugged frame and high-capacity battery",
+    "eBike C150: Comfortable city commuter e-bike with integrated lights and fenders",
+    "eBike M300: Mid-drive electric mountain bike with advanced suspension and trail capabilities",
+    "Forks: Durable suspension forks for smooth ride on various terrains",
+    "Frame: Lightweight aluminum frame with internal cable routing",
+    "Seat: Ergonomic seat with memory foam for extended comfort",
+    "Handlebar: Adjustable handlebar with integrated display mount",
+    "Bearings: Sealed cartridge bearings for smooth, low-maintenance operation",
+    "Wheels: 27.5-inch alloy wheels with reinforced spokes",
+    "Wheel: Individual 27.5-inch alloy wheel compatible with tubeless tires",
+    "Thru_Axle: 15mm front and 12mm rear thru-axles for improved stiffness",
+    "Tires: Puncture-resistant, all-terrain tires with reflective sidewalls",
+    "Drive_Train: 11-speed drivetrain system for versatile gear range",
+    "Cassette: 11-speed cassette with wide gear ratio for varied terrain",
+    "Crank: Forged aluminum crank arms with integrated torque sensor",
+    "Brakes: Hydraulic disc brakes for powerful, all-weather stopping",
+    "Brake_Lever: Ergonomic brake levers with reach adjustment",
+    "Gear_Lever: Intuitive trigger shifters for precise gear changes",
+    "Front_Derailleur: Electronic front derailleur for smooth shifting",
+    "Rear_Derailleur: Electronic rear derailleur with motor-driven actuation",
+    "Chain: Rust-resistant, high-strength chain optimized for e-bike use",
+    "Bottom_Bracket: Sealed cartridge bottom bracket for durability",
+    "Battery: 36V, 14Ah lithium-ion battery with smart BMS",
+    "Motor: 250W mid-drive motor with 80Nm torque output",
+    "Control_Unit: Advanced controller with Bluetooth connectivity and app support",
+    "Bolt: Stainless steel bolts in various sizes for assembly",
+    "Washer: Nylon and metal washers for proper component fit",
+    "Motor_Assembly: Pre-assembled motor unit with integrated gearbox",
+    "MRO_Part1: Specialized tools for e-bike maintenance",
+    "MRO_Part2: Cleaning and lubrication kit for regular upkeep",
+    "MRO_Part3: Diagnostic equipment for electronic systems"
+  ],
+  "machine_types": [
+    "Frame Welding",
+    "Wheel Assembly",
+    "Paint Booth",
+    "Battery Assembly",
+    "Motor Assembly",
+    "Final Assembly",
+    "Quality Control",
+    "Packaging"
+  ],
+  "capacity_uom": {
+    "Frame Welding": "frames/hour",
+    "Wheel Assembly": "wheels/hour",
+    "Paint Booth": "frames/hour",
+    "Battery Assembly": "batteries/hour",
+    "Motor Assembly": "motors/hour",
+    "Final Assembly": "bikes/hour",
+    "Quality Control": "bikes/hour",
+    "Packaging": "bikes/hour"
+  },
+  "nominal_capacity": {
+    "Frame Welding": [5, 10],
+    "Wheel Assembly": [20, 30],
+    "Paint Booth": [10, 15],
+    "Battery Assembly": [15, 25],
+    "Motor Assembly": [20, 30],
+    "Final Assembly": [5, 10],
+    "Quality Control": [10, 15],
+    "Packaging": [10, 20]
+  },
+  "work_centers": [
+    {
+      "name": "Frame Fabrication",
+      "description": "Area for cutting, shaping, and welding bike frames",
+      "capacity": 10,
+      "capacity_uom": "frames/hour",
+      "associated_machines": ["Frame Welding"]
+    },
+    {
+      "name": "Wheel Production",
+      "description": "Assembly line for wheel building and truing",
+      "capacity": 30,
+      "capacity_uom": "wheels/hour",
+      "associated_machines": ["Wheel Assembly"]
+    },
+    {
+      "name": "Paint and Finish",
+      "description": "Automated paint booth and manual finishing area",
+      "capacity": 15,
+      "capacity_uom": "frames/hour",
+      "associated_machines": ["Paint Booth"]
+    },
+    {
+      "name": "Battery Production",
+      "description": "Clean room for battery cell assembly and testing",
+      "capacity": 20,
+      "capacity_uom": "batteries/hour",
+      "associated_machines": ["Battery Assembly"]
+    },
+    {
+      "name": "Motor Assembly",
+      "description": "Precision assembly line for electric motors",
+      "capacity": 25,
+      "capacity_uom": "motors/hour",
+      "associated_machines": ["Motor Assembly"]
+    },
+    {
+      "name": "Final Assembly Line 1",
+      "description": "Main assembly line for complete e-bikes",
+      "capacity": 8,
+      "capacity_uom": "bikes/hour",
+      "associated_machines": ["Final Assembly"]
+    },
+    {
+      "name": "Final Assembly Line 2",
+      "description": "Secondary assembly line for overflow and special orders",
+      "capacity": 6,
+      "capacity_uom": "bikes/hour",
+      "associated_machines": ["Final Assembly"]
+    },
+    {
+      "name": "Quality Control Station",
+      "description": "Comprehensive testing and inspection area",
+      "capacity": 12,
+      "capacity_uom": "bikes/hour",
+      "associated_machines": ["Quality Control"]
+    },
+    {
+      "name": "Packaging and Shipping",
+      "description": "Area for final packaging and preparation for shipment",
+      "capacity": 15,
+      "capacity_uom": "bikes/hour",
+      "associated_machines": ["Packaging"]
+    }
+  ],
+  "qc_comments": {
+    "frame": [
+      "Frame alignment within specified tolerances",
+      "Welding quality meets or exceeds standards",
+      "No visible defects or stress points in frame structure",
+      "Frame size and geometry match specifications",
+      "All mounting points correctly positioned and threaded"
+    ],
+    "paint": [
+      "Paint finish smooth and even across all surfaces",
+      "No runs, drips, or orange peel effect observed",
+      "Color matches specified shade within acceptable range",
+      "Decals applied correctly and without bubbles",
+      "Clear coat evenly applied and fully cured"
+    ],
+    "wheels": [
+      "Wheel true and round within 0.5mm tolerance",
+      "Spoke tension even and within specified range",
+      "Hub bearings smooth with no play",
+      "Rim tape correctly installed",
+      "Tire bead seated properly with even spacing"
+    ],
+    "drivetrain": [
+      "Chain tension set to specifications",
+      "Derailleur alignment correct for all gears",
+      "Gear indexing smooth and accurate",
+      "Crankset properly torqued and aligned",
+      "Bottom bracket smoothly rotating without play"
+    ],
+    "brakes": [
+      "Brake pads aligned correctly with rim/rotor",
+      "Hydraulic system properly bled with no leaks",
+      "Brake lever feel firm with appropriate travel",
+      "Braking power meets safety standards in testing",
+      "Rotors true and free from contamination"
+    ],
+    "electronics": [
+      "Battery capacity meets or exceeds rated specification",
+      "Motor output and efficiency within expected range",
+      "Control unit firmware up to date",
+      "All electrical connections secure and waterproof",
+      "Display functions correctly with accurate readings"
+    ],
+    "final_assembly": [
+      "All components securely fastened to torque specifications",
+      "Cables and housing routed correctly without kinks",
+      "Headset adjusted for smooth rotation without play",
+      "Pedals thread in smoothly and are secure",
+      "Quick release/thru-axles function correctly and are secure"
+    ],
+    "quality_control": [
+      "Test ride completed, all systems functioning as expected",
+      "Shifting smooth and accurate across all gears",
+      "Braking performance even and within safety standards",
+      "No unusual noises or vibrations during operation",
+      "All reflectors and safety features present and secure"
+    ],
+    "packaging": [
+      "All included accessories present and undamaged",
+      "Protective packaging correctly applied to frame and components",
+      "User manual and warranty information included",
+      "Shipping box undamaged and correctly labeled",
+      "Battery charge level within safe shipping range"
+    ]
+  },
+  "suppliers": [
+    { "name": "Acme Electronics", "lead_time": 5 },
+    { "name": "BikeFrame Co.", "lead_time": 10 },
+    { "name": "Wheel Masters", "lead_time": 7 },
+    { "name": "Battery Tech", "lead_time": 14 },
+    { "name": "Control Systems Inc.", "lead_time": 8 },
+    { "name": "MetalWorks Supply", "lead_time": 12 },
+    { "name": "Precision Parts Ltd.", "lead_time": 6 },
+    { "name": "Global Components", "lead_time": 21 }
+  ],
+  "cost_ranges": {
+    "products": { "min": 50, "max": 1000 },
+    "components": { "min": 1, "max": 100 },
+    "work_centers": { "min": 50, "max": 200 },
+    "machines": { "min": 20, "max": 100 }
+  },
+  "lead_time_range": { "min": 1, "max": 30 },
+  "employee_hourly_rate_range": { "min": 15, "max": 50 },
+  "downtime_reasons": {
+    "unplanned": [
+      "Equipment Failure",
+      "Power Outage",
+      "Material Shortage",
+      "Operator Absence",
+      "Quality Issue",
+      "Tool Breakage",
+      "Software Error",
+      "Safety Incident",
+      "Unexpected Maintenance"
+    ],
+    "planned": [
+      "Scheduled Maintenance",
+      "Shift Change",
+      "Setup/Changeover",
+      "Cleaning",
+      "Training",
+      "Meeting",
+      "Planned Downtime",
+      "Software Update",
+      "Certification"
+    ]
+  },
+  "material_categories": [
+    "Raw Material",
+    "Electronic Component",
+    "Mechanical Component",
+    "Assembly",
+    "Packaging",
+    "MRO",
+    "Consumable",
+    "Finished Good"
+  ],
+  "product_categories": [
+    "Electric Bikes",
+    "Components",
+    "Accessories",
+    "Spare Parts",
+    "MRO"
+  ],
+  "storage_locations": [
+    "Warehouse A",
+    "Warehouse B",
+    "Production Floor",
+    "Assembly Area",
+    "External Storage",
+    "Secured Storage",
+    "Temperature Controlled"
+  ],
+  "defect_severities": {
+    "1": "Minor - Cosmetic issue, no functional impact",
+    "2": "Low - Slight functional impact, easily fixed",
+    "3": "Medium - Noticeable functional impact, requires rework",
+    "4": "High - Significant functional issue, may require replacement",
+    "5": "Critical - Safety concern or complete failure"
+  }
+}
