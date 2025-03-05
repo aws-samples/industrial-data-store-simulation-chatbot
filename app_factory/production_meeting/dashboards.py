@@ -280,8 +280,8 @@ def quality_dashboard():
     """Display the quality dashboard"""
     st.header("⚠️ Quality Overview")
     
-    # Get quality data
-    quality_data = db_manager.get_quality_summary(days_back=1)
+    # Get quality data (looking at a 30-day window to ensure we have data)
+    quality_data = db_manager.get_quality_summary(days_back=1, range_days=30)
     
     if not quality_data.empty:
         # Summary metrics
@@ -294,6 +294,9 @@ def quality_dashboard():
         metrics_cols[0].metric("Avg Defect Rate", f"{avg_defect_rate:.2f}%")
         metrics_cols[1].metric("Avg Rework Rate", f"{avg_rework_rate:.2f}%")
         metrics_cols[2].metric("Avg Yield Rate", f"{avg_yield_rate:.2f}%")
+        
+        # Add timeframe clarification
+        st.caption("Data shown represents the last 30 days of quality inspections")
         
         # Quality by product category
         st.subheader("Quality by Product Category")

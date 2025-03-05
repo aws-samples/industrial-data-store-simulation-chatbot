@@ -268,13 +268,20 @@ class DatabaseManager:
             logger.error(f"Error getting machine status summary: {result['error']}")
             return pd.DataFrame()
     
-    def get_quality_summary(self, days_back=1):
-        """Get a summary of quality metrics for the specified days back"""
-        today = datetime.now()
-        target_date = today - timedelta(days=days_back)
+    def get_quality_summary(self, days_back=1, range_days=30):
+        """Get a summary of quality metrics for a range of days
         
-        # Format date for SQL query
-        date_str = target_date.strftime('%Y-%m-%d')
+        Args:
+            days_back (int): Days ago to start the range
+            range_days (int): Number of days to look back from the start date
+        """
+        today = datetime.now()
+        end_date = today - timedelta(days=days_back)
+        start_date = end_date - timedelta(days=range_days)
+        
+        # Format dates for SQL query
+        end_date_str = end_date.strftime('%Y-%m-%d')
+        start_date_str = start_date.strftime('%Y-%m-%d')
         
         query = f"""
         SELECT 
@@ -294,7 +301,7 @@ class DatabaseManager:
         JOIN 
             Products p ON wo.ProductID = p.ProductID
         WHERE 
-            qc.Date LIKE '{date_str}%'
+            qc.Date BETWEEN '{start_date_str}' AND '{end_date_str} 23:59:59'
         GROUP BY 
             p.Name, p.Category
         ORDER BY 

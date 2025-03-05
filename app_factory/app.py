@@ -23,7 +23,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Load custom CSS - optional, will work without it
 def main():
     """Main application entry point"""
     
@@ -32,7 +31,7 @@ def main():
     
     with col1:
         # You can replace this with your logo if available
-        st.image("https://via.placeholder.com/150", width=80)
+        st.image("https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg", width=80)
         
     with col2:
         st.title("🏭 Manufacturing Operations Hub")
