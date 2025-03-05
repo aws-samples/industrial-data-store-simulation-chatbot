@@ -378,12 +378,12 @@ def display_action_tracker(meeting_date=None):
                             if new_status != action["status"]:
                                 tracker.update_action_status(action["id"], new_status, status_note)
                                 st.success(f"Updated status to {new_status}")
-                                st.experimental_rerun()
+                                st.rerun()
                         
                         if st.button("Delete", key=f"delete_{action['id']}"):
                             tracker.delete_action_item(action["id"])
                             st.success("Action item deleted")
-                            st.experimental_rerun()
+                            st.rerun()
                     
                     st.markdown("---")
         else:
@@ -430,7 +430,7 @@ def display_action_tracker(meeting_date=None):
                     )
                     
                     st.success("Action item created!")
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Description and Owner are required")
     

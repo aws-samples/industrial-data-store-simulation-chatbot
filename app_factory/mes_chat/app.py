@@ -385,7 +385,7 @@ def run_mes_chat():
         # Return to main menu button
         if st.button("🏠 Return to Main Menu", use_container_width=True):
             st.session_state.app_mode = None
-            st.experimental_rerun()
+            st.rerun()
         
         st.divider()
         

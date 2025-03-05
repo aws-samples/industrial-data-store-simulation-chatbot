@@ -106,12 +106,12 @@ class ReportGenerator:
         """
         # Start with header
         summary = f"""
-        # Production Meeting Summary - {meeting_date}
-        
-        **Status:** {meeting_data.get('meeting_status', 'Unknown')}  
-        **Attendees:** {meeting_data.get('attendees', 'Not recorded')}
-        
-        """
+# Production Meeting Summary - {meeting_date}
+
+**Status:** {meeting_data.get('meeting_status', 'Unknown')}  
+**Attendees:** {meeting_data.get('attendees', 'Not recorded')}
+
+"""
         
         # Add production data if requested
         if include_data:
@@ -124,9 +124,9 @@ class ReportGenerator:
                 completion_rate = (total_actual / total_planned * 100) if total_planned > 0 else 0
                 
                 summary += f"""
-                ## Production Performance
-                - Yesterday's completion rate: {completion_rate:.1f}% ({total_actual} of {total_planned} units)
-                """
+## Production Performance
+- Yesterday's completion rate: {completion_rate:.1f}% ({total_actual} of {total_planned} units)
+"""
             
             # Machine status
             machine_status = db_manager.get_machine_status_summary()
@@ -138,9 +138,9 @@ class ReportGenerator:
                 machines_in_maintenance = machine_status['Maintenance'].sum()
                 
                 summary += f"""
-                - Current machine availability: {availability:.1f}% ({running_machines} of {total_machines} machines running)
-                - {machines_in_maintenance} machines currently in maintenance
-                """
+- Current machine availability: {availability:.1f}% ({running_machines} of {total_machines} machines running)
+- {machines_in_maintenance} machines currently in maintenance
+"""
             
             # Quality data
             quality_data = db_manager.get_quality_summary(days_back=1)
@@ -150,34 +150,34 @@ class ReportGenerator:
                 avg_yield_rate = quality_data['AvgYieldRate'].mean()
                 
                 summary += f"""
-                - Quality yield rate: {avg_yield_rate:.1f}% (defect rate: {avg_defect_rate:.1f}%)
-                """
+- Quality yield rate: {avg_yield_rate:.1f}% (defect rate: {avg_defect_rate:.1f}%)
+"""
             
             # Inventory alerts
             inventory_alerts = db_manager.get_inventory_alerts()
             inventory_alert_count = len(inventory_alerts) if not inventory_alerts.empty else 0
             
             summary += f"""
-                - {inventory_alert_count} inventory items below reorder level
-                """
+- {inventory_alert_count} inventory items below reorder level
+"""
         
         # Add action items
         if meeting_data.get('action_items'):
             summary += """
-            ## Action Items
-            """
+## Action Items
+"""
             
             for item in meeting_data['action_items']:
                 summary += f"""
-                - {item['description']} (Owner: {item['owner']}, Due: {item['due_date']}, Status: {item['status']})
-                """
+- {item['description']} (Owner: {item['owner']}, Due: {item['due_date']}, Status: {item['status']})
+"""
         
         # Add notes
         if meeting_data.get('notes'):
             summary += f"""
-            ## Notes
-            {meeting_data['notes']}
-            """
+## Notes
+{meeting_data['notes']}
+"""
         
         return summary.replace("        ", "")  # Remove leading spaces from the heredoc
     
@@ -205,10 +205,10 @@ class ReportGenerator:
         
         # Header
         summary = f"""
-        # Weekly Production Summary
-        **Period:** {start_date_str} to {end_date_str}
-        
-        """
+# Weekly Production Summary
+**Period:** {start_date_str} to {end_date_str}
+
+"""
         
         # Weekly production data
         weekly_production_query = f"""
@@ -241,14 +241,14 @@ class ReportGenerator:
             avg_completion = weekly_production['CompletionPercentage'].mean()
             
             summary += f"""
-            ## Production Summary
-            - **Total Planned Production:** {int(total_planned):,} units
-            - **Total Actual Production:** {int(total_actual):,} units
-            - **Average Completion Rate:** {avg_completion:.1f}%
-            - **Total Scrap:** {int(total_scrap):,} units ({(total_scrap/total_planned*100 if total_planned > 0 else 0):.1f}% of planned)
-            
-            ### Daily Production Trend
-            """
+## Production Summary
+- **Total Planned Production:** {int(total_planned):,} units
+- **Total Actual Production:** {int(total_actual):,} units
+- **Average Completion Rate:** {avg_completion:.1f}%
+- **Total Scrap:** {int(total_scrap):,} units ({(total_scrap/total_planned*100 if total_planned > 0 else 0):.1f}% of planned)
+
+### Daily Production Trend
+"""
             
             # Add daily data
             summary += "| Date | Planned | Actual | Completion % |\n"
@@ -289,8 +289,8 @@ class ReportGenerator:
             weekly_quality = pd.DataFrame(result["rows"])
             
             summary += f"""
-            ## Quality Summary
-            """
+## Quality Summary
+"""
             
             # Add quality data by product category
             summary += "| Product Category | Inspections | Pass Rate | Defect Rate | Rework Rate |\n"
@@ -329,8 +329,8 @@ class ReportGenerator:
                 top_defects = pd.DataFrame(result["rows"])
                 
                 summary += f"""
-                ### Top 5 Defect Types
-                """
+### Top 5 Defect Types
+"""
                 
                 for _, row in top_defects.iterrows():
                     summary += f"- **{row['DefectType']}** ({row['DefectCount']} occurrences, Avg Severity: {row['AvgSeverity']:.1f}/5) in {row['ProductCategory']}\n"
@@ -361,8 +361,8 @@ class ReportGenerator:
             weekly_oee = pd.DataFrame(result["rows"])
             
             summary += f"""
-            ## Equipment Performance
-            """
+## Equipment Performance
+"""
             
             # Add OEE data by machine type
             summary += "| Machine Type | # Machines | Availability | Performance | Quality | OEE |\n"
@@ -378,11 +378,11 @@ class ReportGenerator:
             overall_oee = overall_availability * overall_performance * overall_quality / 10000
             
             summary += f"""
-            ### Overall OEE: {overall_oee:.1f}%
-            - Availability: {overall_availability:.1f}%
-            - Performance: {overall_performance:.1f}%
-            - Quality: {overall_quality:.1f}%
-            """
+### Overall OEE: {overall_oee:.1f}%
+- Availability: {overall_availability:.1f}%
+- Performance: {overall_performance:.1f}%
+- Quality: {overall_quality:.1f}%
+"""
             
             # Downtime events
             downtime_query = f"""
@@ -408,8 +408,8 @@ class ReportGenerator:
                 downtimes = pd.DataFrame(result["rows"])
                 
                 summary += f"""
-                ### Top Downtime Reasons
-                """
+### Top Downtime Reasons
+"""
                 
                 for _, row in downtimes.iterrows():
                     hours = row['TotalMinutes'] / 60
@@ -417,12 +417,12 @@ class ReportGenerator:
         
         # Generate timestamp
         summary += f"""
+
+---
+*Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}*
+"""
         
-        ---
-        *Report generated on {datetime.now().strftime('%Y-%m-%d %H:%M')}*
-        """
-        
-        return summary.replace("        ", "")  # Remove leading spaces from the heredoc
+        return summary
     
     def export_to_pdf(self, markdown_content, output_file=None):
         """

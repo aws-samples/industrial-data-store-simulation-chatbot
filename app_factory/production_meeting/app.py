@@ -93,7 +93,7 @@ def run_production_meeting():
     with control_cols[4]:
         if st.button("🏠 Return to Main Menu", use_container_width=True):
             st.session_state.app_mode = None
-            st.experimental_rerun()
+            st.rerun()
     
     # Main navigation tabs
     tabs = st.tabs([
