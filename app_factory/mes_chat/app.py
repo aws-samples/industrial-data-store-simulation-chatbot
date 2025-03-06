@@ -1,4 +1,4 @@
-"""MES Chatbot application - adapted from the original Chat.py"""
+"""MES Chatbot application"""
 
 import json
 import logging
