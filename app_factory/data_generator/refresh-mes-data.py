@@ -1,14 +1,12 @@
+# refresh-mes-data.py
 import os
 import sys
 import argparse
 import logging
 import sqlite3
+import importlib.util
 from datetime import datetime, timedelta
 from pathlib import Path
-
-# Import the simulator class from your existing script
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from sqlite-synthetic-mes-data import MESSimulator
 
 # Configure logging
 logging.basicConfig(
@@ -16,6 +14,27 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger('MES-Data-Refresher')
+
+# Import the MESSimulator class from the existing script
+def import_simulator():
+    """Dynamically import the MESSimulator class from the sqlite-synthetic-mes-data.py file."""
+    try:
+        # Get the full path to the module
+        module_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sqlite-synthetic-mes-data.py')
+        
+        # Load the module dynamically
+        spec = importlib.util.spec_from_file_location("mes_simulator_module", module_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        
+        # Return the MESSimulator class
+        return module.MESSimulator
+    except Exception as e:
+        logger.error(f"Failed to import MESSimulator: {e}")
+        raise
+
+# Get the MESSimulator class
+MESSimulator = import_simulator()
 
 def truncate_all_tables(db_path):
     """Delete all data from tables but preserve schema."""
