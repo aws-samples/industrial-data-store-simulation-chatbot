@@ -61,8 +61,14 @@ def truncate_all_tables(db_path):
                 logger.info(f"Truncating table: {table_name}")
                 cursor.execute(f"DELETE FROM {table_name};")
         
-        # Reset autoincrement counters
-        cursor.execute("DELETE FROM sqlite_sequence;")
+        # Reset autoincrement counters if sqlite_sequence exists
+        try:
+            cursor.execute("DELETE FROM sqlite_sequence;")
+        except sqlite3.OperationalError as e:
+            if "no such table: sqlite_sequence" in str(e):
+                logger.info("No sqlite_sequence table found (normal if no autoincrement columns)")
+            else:
+                raise
         
         # Commit transaction
         conn.commit()
