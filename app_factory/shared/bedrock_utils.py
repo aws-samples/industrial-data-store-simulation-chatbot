@@ -104,17 +104,21 @@ def get_available_bedrock_models(client=None):
             "name": "Command R+",
             "provider": "Cohere"
         },
-        # Mistral models
-        "mistral.mistral-large-v1:0": {
-            "name": "Mistral Large",
+        # Mistral models - updated based on mistralmodels.json
+        "mistral.mistral-7b-instruct-v0:2": {
+            "name": "Mistral 7B Instruct",
             "provider": "Mistral AI"
         },
-        "mistral.mistral-large-2-v1:0": {
-            "name": "Mistral Large 2",
+        "mistral.mixtral-8x7b-instruct-v0:1": {
+            "name": "Mixtral 8x7B Instruct",
             "provider": "Mistral AI"
         },
-        "mistral.mistral-small-v1:0": {
-            "name": "Mistral Small",
+        "mistral.mistral-large-2402-v1:0": {
+            "name": "Mistral Large (24.02)",
+            "provider": "Mistral AI"
+        },
+        "mistral.mistral-small-2402-v1:0": {
+            "name": "Mistral Small (24.02)",
             "provider": "Mistral AI"
         },
         # Meta models
