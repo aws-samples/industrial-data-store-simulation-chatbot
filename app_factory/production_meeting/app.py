@@ -1,5 +1,5 @@
 """
-Production Meeting Dashboard - Daily lean meeting tool
+Production Meeting Dashboard - Daily lean meeting tool with enhanced AI analytics
 """
 
 import streamlit as st
@@ -20,11 +20,20 @@ from production_meeting.dashboards import (
     quality_dashboard,
     inventory_dashboard,
     productivity_dashboard,
-    weekly_overview_dashboard
+    weekly_overview_dashboard,
+    add_process_flow_visualization,
+    add_root_cause_analysis,
 )
 from production_meeting.action_tracker import display_action_tracker
 from production_meeting.report import display_report_generator
-from production_meeting.ai_insights import display_ai_insights_tab, provide_tab_insights
+from production_meeting.ai_insights import (
+    display_ai_insights_tab, 
+    provide_tab_insights,
+    generate_predictive_insights,
+    generate_decision_intelligence,
+    generate_narrative_summary,
+    add_conversational_analysis
+)
 
 # Initialize database manager
 db_manager = DatabaseManager()
@@ -109,13 +118,15 @@ def run_production_meeting():
             st.session_state.app_mode = None
             st.rerun()
     
-    # Main navigation tabs
+    # Main navigation tabs 
     tabs = st.tabs([
         "📈 Production Summary", 
         "🔧 Equipment Status", 
         "⚠️ Quality Issues",
         "📦 Inventory Alerts",
         "👥 Productivity",
+        "🔄 Process Flow",
+        "🔍 Root Cause Analysis", 
         "🤖 AI Insights",
         "📋 Action Items",
         "📝 Meeting Notes",
@@ -146,16 +157,46 @@ def run_production_meeting():
     with tabs[4]:
         productivity_dashboard()
     
-    # Tab 6: AI Insights
+    # Tab 6: Process Flow
     with tabs[5]:
-        display_ai_insights_tab()
+        add_process_flow_visualization()
     
-    # Tab 7: Action Items
+    # Tab 7: Root Cause Analysis
     with tabs[6]:
+        add_root_cause_analysis()
+    
+    # Tab 8: AI Insights - Enhanced with structured selection options
+    with tabs[7]:
+        # Let user select which type of AI analysis to show
+        analysis_type = st.radio(
+            "Select Analysis Type:",
+            options=[
+                "General Insights", 
+                "Predictive Analysis", 
+                "Decision Intelligence", 
+                "Data Storytelling", 
+                "Conversational Q&A"
+            ],
+            horizontal=True
+        )
+        
+        if analysis_type == "General Insights":
+            display_ai_insights_tab()
+        elif analysis_type == "Predictive Analysis":
+            generate_predictive_insights()
+        elif analysis_type == "Decision Intelligence":
+            generate_decision_intelligence()
+        elif analysis_type == "Data Storytelling":
+            generate_narrative_summary()
+        else:  # Conversational Q&A
+            add_conversational_analysis()
+    
+    # Tab 9: Action Items
+    with tabs[8]:
         display_action_tracker(st.session_state.meeting_data["date"])
     
-    # Tab 8: Meeting Notes
-    with tabs[7]:
+    # Tab 10: Meeting Notes
+    with tabs[9]:
         st.header("📝 Meeting Notes")
         
         # Meeting notes input
@@ -171,21 +212,70 @@ def run_production_meeting():
         with st.expander("Weekly Performance Overview", expanded=False):
             weekly_overview_dashboard()
     
-    # Tab 9: Reports
-    with tabs[8]:
-        display_report_generator(
-            meeting_date=st.session_state.meeting_data["date"], 
-            meeting_data=st.session_state.meeting_data
+    # Tab 11: Reports
+    with tabs[10]:
+        report_options = st.radio(
+            "Report Type:",
+            options=["Standard Report", "AI-Enhanced Executive Summary"],
+            horizontal=True
         )
+        
+        if report_options == "Standard Report":
+            display_report_generator(
+                meeting_date=st.session_state.meeting_data["date"], 
+                meeting_data=st.session_state.meeting_data
+            )
+        else:
+            st.subheader("AI-Enhanced Executive Summary")
+            st.info("This summary combines production data with AI analysis for executive review")
+            
+            if st.button("Generate Executive Summary", use_container_width=True):
+                with st.spinner("Analyzing data and generating executive summary..."):
+                    # Simply call the narrative summary function - it already provides what we need
+                    generate_narrative_summary()
 
-# This allows the module to be run directly for testing
+def show_welcome_screen():
+    """Display welcome screen with demo introduction"""
+    st.title("🏭 Manufacturing Operations Hub")
+    st.subheader("AI-Enhanced Production Analytics Demo")
+    
+    st.markdown("""
+    This demonstration showcases how AI can transform daily production meetings from lengthy report reviews into 
+    focused decision sessions. The application features:
+    
+    - **Real-time KPIs and Metrics** - All the critical numbers at your fingertips
+    - **Automated Analysis** - Let AI find patterns and insights in your data
+    - **Root Cause Exploration** - Dig deeper into quality and production issues
+    - **Predictive Insights** - See potential issues before they happen
+    """)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.info("### BEFORE\n* 60-90 min manual report preparation\n* Reactive problem solving\n* Focus on what happened")
+    
+    with col2:
+        st.success("### AFTER\n* Automatic data analysis\n* Proactive issue detection\n* Focus on why and what's next")
+    
+    with col3:
+        st.button("Launch Production Meeting Demo", use_container_width=True, key="launch_demo",
+                on_click=lambda: setattr(st.session_state, 'show_welcome', False))
+
+# for testing
 if __name__ == "__main__":
     # Set page config
     st.set_page_config(
-        page_title="Production Meeting Dashboard", 
-        page_icon="📊",
+        page_title="Manufacturing Operations Hub", 
+        page_icon="🏭",
         layout="wide",
-        initial_sidebar_state="expanded"
+        initial_sidebar_state="collapsed"
     )
     
-    run_production_meeting()
+    if "show_welcome" not in st.session_state:
+        st.session_state.show_welcome = True
+    
+    # Show either welcome screen or main application
+    if st.session_state.show_welcome:
+        show_welcome_screen()
+    else:
+        run_production_meeting()

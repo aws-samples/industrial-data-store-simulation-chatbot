@@ -4,6 +4,7 @@ Production dashboards for the daily production meeting
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
@@ -12,6 +13,8 @@ from shared.database import DatabaseManager
 
 # Initialize database manager
 db_manager = DatabaseManager()
+
+
 
 def production_summary_dashboard():
     """Display the production summary dashboard"""
@@ -50,6 +53,7 @@ def production_summary_dashboard():
                 title='Planned vs Actual Production',
                 labels={'value': 'Units', 'variable': 'Metric', 'ProductName': 'Product'}
             )
+            
             st.plotly_chart(fig, use_container_width=True)
             
             # Show detailed data
@@ -277,7 +281,7 @@ def equipment_status_dashboard():
         st.success("No machines scheduled for maintenance in the next 7 days")
 
 def quality_dashboard():
-    """Display the quality dashboard"""
+    """Display the quality dashboard with improved product-level metrics"""
     st.header("⚠️ Quality Overview")
     
     # Get quality data (looking at a 30-day window to ensure we have data)
@@ -325,36 +329,97 @@ def quality_dashboard():
                 'ProductCategory': 'Product Category'
             }
         )
+        
         st.plotly_chart(fig, use_container_width=True)
         
-        # Product-level quality metrics
-        st.subheader("Product-level Quality Metrics")
+        # Product-level quality metrics - IMPROVED VISUALIZATION
+        st.subheader("Product-level Quality Performance")
         
-        # Calculate first-pass yield
-        quality_data['FirstPassYield'] = quality_data['PassCount'] / quality_data['InspectionCount'] * 100
+        # Sort products by defect rate (descending) to focus on problem areas
+        product_quality = quality_data.sort_values('AvgDefectRate', ascending=False)
         
-        # Sort by inspection count
-        quality_data_sorted = quality_data.sort_values('InspectionCount', ascending=False)
+        # Calculate first pass yield for each product
+        product_quality['FirstPassYield'] = (product_quality['PassCount'] / product_quality['InspectionCount'] * 100).round(1)
         
-        fig = px.scatter(
-            quality_data_sorted,
-            x='AvgDefectRate',
-            y='FirstPassYield',
-            size='InspectionCount',
-            color='ProductCategory',
-            hover_name='ProductName',
-            title='Quality Performance by Product',
-            labels={
-                'AvgDefectRate': 'Defect Rate (%)',
-                'FirstPassYield': 'First Pass Yield (%)',
-                'InspectionCount': 'Number of Inspections'
-            }
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        # Create a simpler, more actionable visualization
+        col1, col2 = st.columns([3, 2])
         
-        # Detailed quality data
-        with st.expander("Detailed Quality Data", expanded=False):
-            st.dataframe(quality_data)
+        with col1:
+            # Top 10 products by defect rate
+            top_products = product_quality.head(10)
+            
+            # Create a horizontal bar chart for defect rates
+            fig = px.bar(
+                top_products,
+                y='ProductName',
+                x='AvgDefectRate',
+                orientation='h',
+                color='AvgDefectRate',
+                color_continuous_scale='Reds',
+                title='Top 10 Products by Defect Rate',
+                labels={
+                    'AvgDefectRate': 'Defect Rate (%)',
+                    'ProductName': 'Product'
+                }
+            )
+            
+            # Add a target line
+            fig.add_shape(
+                type="line",
+                x0=3,  # Target defect rate
+                y0=-0.5,
+                x1=3,
+                y1=len(top_products)-0.5,
+                line=dict(color="green", width=2, dash="dash"),
+            )
+            
+            fig.add_annotation(
+                x=3,
+                y=len(top_products)/2,
+                text="Target",
+                showarrow=False,
+                xanchor="left",
+                yanchor="middle"
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # Quality metrics table with visual indicators
+            st.subheader("Quality Performance")
+            
+            # Sort by a combination of metrics to highlight overall problematic products
+            quality_score = (product_quality['AvgDefectRate'] * 2) - product_quality['FirstPassYield'] / 100
+            product_quality['QualityScore'] = quality_score
+            
+            # Top 10 products with quality issues
+            problem_products = product_quality.sort_values('QualityScore', ascending=False).head(8)
+            
+            # Create a styled dataframe
+            metrics_table = pd.DataFrame({
+                'Product': problem_products['ProductName'],
+                'Category': problem_products['ProductCategory'],
+                'Defect Rate': problem_products['AvgDefectRate'].round(1).astype(str) + '%',
+                'First Pass': problem_products['FirstPassYield'].round(1).astype(str) + '%',
+                'Inspections': problem_products['InspectionCount']
+            })
+            
+            # Add emoji indicators based on defect rate
+            def add_indicator(value):
+                try:
+                    rate = float(value.strip('%'))
+                    if rate > 5:
+                        return f"🔴 {value}"
+                    elif rate > 3:
+                        return f"🟠 {value}"
+                    else:
+                        return f"🟢 {value}"
+                except:
+                    return value
+            
+            metrics_table['Defect Rate'] = metrics_table['Defect Rate'].apply(add_indicator)
+            
+            st.dataframe(metrics_table, use_container_width=True)
         
         # Get top defects from yesterday
         defects_query = """
@@ -408,6 +473,213 @@ def quality_dashboard():
     else:
         st.info("No quality data available for yesterday")
 
+def add_root_cause_analysis():
+    """Add root cause analysis based on actual defect data from the database"""
+    st.header("🔍 Root Cause Analysis")
+    
+    # Get defect types from database for selection
+    defect_query = """
+    SELECT 
+        d.DefectType,
+        COUNT(d.DefectID) as DefectCount
+    FROM 
+        Defects d
+    JOIN 
+        QualityControl qc ON d.CheckID = qc.CheckID
+    WHERE 
+        qc.Date >= date('now', '-30 day')
+    GROUP BY 
+        d.DefectType
+    ORDER BY 
+        DefectCount DESC
+    LIMIT 15
+    """
+    
+    result = db_manager.execute_query(defect_query)
+    
+    if result["success"] and result["row_count"] > 0:
+        defect_df = pd.DataFrame(result["rows"])
+        
+        # Let user select defect type to analyze
+        selected_defect = st.selectbox(
+            "Select defect type to analyze:",
+            options=defect_df['DefectType'].tolist(),
+            format_func=lambda x: f"{x} ({defect_df[defect_df['DefectType']==x]['DefectCount'].values[0]} occurrences)"
+        )
+        
+        if st.button("Run Root Cause Analysis"):
+            with st.spinner("Analyzing patterns..."):
+                # Get detailed data on the selected defect type
+                detail_query = f"""
+                SELECT 
+                    d.DefectType,
+                    d.Severity,
+                    d.Location,
+                    d.RootCause,
+                    d.ActionTaken,
+                    p.Name as ProductName,
+                    p.Category as ProductCategory,
+                    wc.Name as WorkCenterName,
+                    m.Name as MachineName,
+                    m.Type as MachineType,
+                    e.Name as EmployeeName,
+                    e.Role as EmployeeRole
+                FROM 
+                    Defects d
+                JOIN 
+                    QualityControl qc ON d.CheckID = qc.CheckID
+                JOIN 
+                    WorkOrders wo ON qc.OrderID = wo.OrderID
+                JOIN 
+                    Products p ON wo.ProductID = p.ProductID
+                JOIN 
+                    WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
+                JOIN 
+                    Machines m ON wo.MachineID = m.MachineID
+                JOIN 
+                    Employees e ON wo.EmployeeID = e.EmployeeID
+                WHERE 
+                    d.DefectType = '{selected_defect}'
+                    AND qc.Date >= date('now', '-30 day')
+                """
+                
+                detail_result = db_manager.execute_query(detail_query)
+                
+                if detail_result["success"] and detail_result["row_count"] > 0:
+                    detail_df = pd.DataFrame(detail_result["rows"])
+                    
+                    # Analyze patterns in the data
+                    
+                    # Product distribution
+                    product_counts = detail_df['ProductName'].value_counts().reset_index()
+                    product_counts.columns = ['ProductName', 'Count']
+                    
+                    # Machine distribution
+                    machine_counts = detail_df['MachineName'].value_counts().reset_index()
+                    machine_counts.columns = ['MachineName', 'Count']
+                    
+                    # Root cause distribution
+                    cause_counts = detail_df['RootCause'].value_counts().reset_index()
+                    cause_counts.columns = ['RootCause', 'Count']
+                    
+                    # Location distribution
+                    location_counts = detail_df['Location'].value_counts().reset_index()
+                    location_counts.columns = ['Location', 'Count']
+                    
+                    # Display analysis results
+                    st.write(f"### Root Cause Analysis: {selected_defect}")
+                    
+                    # Key metrics
+                    st.write(f"**Total occurrences**: {len(detail_df)}")
+                    st.write(f"**Average severity**: {detail_df['Severity'].mean():.1f} / 5")
+                    
+                    # Create columns for distribution charts
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # Product distribution
+                        fig1 = px.bar(
+                            product_counts.head(5), 
+                            x='ProductName', 
+                            y='Count',
+                            title='Top Products with this Defect'
+                        )
+                        st.plotly_chart(fig1, use_container_width=True)
+                        
+                        # Root cause distribution
+                        fig3 = px.pie(
+                            cause_counts, 
+                            values='Count', 
+                            names='RootCause',
+                            title='Root Causes'
+                        )
+                        st.plotly_chart(fig3, use_container_width=True)
+                    
+                    with col2:
+                        # Machine distribution
+                        fig2 = px.bar(
+                            machine_counts.head(5), 
+                            x='MachineName', 
+                            y='Count',
+                            title='Top Machines with this Defect'
+                        )
+                        st.plotly_chart(fig2, use_container_width=True)
+                        
+                        # Location distribution
+                        fig4 = px.pie(
+                            location_counts, 
+                            values='Count', 
+                            names='Location',
+                            title='Defect Locations'
+                        )
+                        st.plotly_chart(fig4, use_container_width=True)
+                    
+                    # Identify correlations
+                    st.write("### Key Findings")
+                    
+                    # Report primary product affected
+                    if not product_counts.empty:
+                        primary_product = product_counts.iloc[0]['ProductName']
+                        product_percent = product_counts.iloc[0]['Count'] / product_counts['Count'].sum() * 100
+                        st.info(f"**Primary Product**: {primary_product} accounts for {product_percent:.1f}% of these defects")
+                    
+                    # Report primary machine affected
+                    if not machine_counts.empty:
+                        primary_machine = machine_counts.iloc[0]['MachineName']
+                        machine_percent = machine_counts.iloc[0]['Count'] / machine_counts['Count'].sum() * 100
+                        st.info(f"**Primary Machine**: {primary_machine} accounts for {machine_percent:.1f}% of these defects")
+                    
+                    # Report primary root cause
+                    if not cause_counts.empty:
+                        primary_cause = cause_counts.iloc[0]['RootCause']
+                        cause_percent = cause_counts.iloc[0]['Count'] / cause_counts['Count'].sum() * 100
+                        st.info(f"**Primary Root Cause**: {primary_cause} accounts for {cause_percent:.1f}% of these defects")
+                    
+                    # Get actions taken
+                    actions = detail_df['ActionTaken'].value_counts().reset_index()
+                    actions.columns = ['Action', 'Count']
+                    
+                    st.write("### Recommended Actions")
+                    
+                    # Recommend actions based on data patterns
+                    if not actions.empty:
+                        st.write("**Based on effective actions taken so far:**")
+                        
+                        for i, row in actions.head(3).iterrows():
+                            effectiveness = row['Count'] / actions['Count'].sum() * 100
+                            st.write(f"- **{row['Action']}** (Used in {effectiveness:.1f}% of cases)")
+                    
+                    # Check for machine maintenance correlation
+                    maintenance_query = f"""
+                    SELECT 
+                        julianday(m.LastMaintenanceDate) - julianday(qc.Date) as DaysSinceMaintenance
+                    FROM 
+                        Defects d
+                    JOIN 
+                        QualityControl qc ON d.CheckID = qc.CheckID
+                    JOIN 
+                        WorkOrders wo ON qc.OrderID = wo.OrderID
+                    JOIN 
+                        Machines m ON wo.MachineID = m.MachineID
+                    WHERE 
+                        d.DefectType = '{selected_defect}'
+                        AND qc.Date >= date('now', '-30 day')
+                    """
+                    
+                    maintenance_result = db_manager.execute_query(maintenance_query)
+                    
+                    if maintenance_result["success"] and maintenance_result["row_count"] > 0:
+                        maintenance_df = pd.DataFrame(maintenance_result["rows"])
+                        
+                        avg_days = maintenance_df['DaysSinceMaintenance'].mean()
+                        
+                        if avg_days > 14:  # If average is more than 2 weeks
+                            st.warning(f"**Maintenance Correlation**: Defects occur on average {avg_days:.1f} days after maintenance. Consider reviewing maintenance frequency.")
+                else:
+                    st.error("Error retrieving defect details")
+    else:
+        st.info("No defect data available for analysis")
+
 def inventory_dashboard():
     """Display the inventory dashboard"""
     st.header("📦 Inventory Status")
@@ -440,20 +712,61 @@ def inventory_dashboard():
         
         category_alerts.columns = ['Category', 'ItemCount', 'TotalShortage']
         
-        fig = px.bar(
-            category_alerts,
-            x='Category',
-            y='ItemCount',
-            color='TotalShortage',
-            title='Inventory Alerts by Category',
-            labels={
-                'ItemCount': 'Number of Items',
-                'Category': 'Category',
-                'TotalShortage': 'Total Shortage'
-            },
-            color_continuous_scale='Reds'
-        )
-        st.plotly_chart(fig, use_container_width=True)
+        # If we have multiple categories, show the bar chart
+        if len(category_alerts) > 1:
+            fig = px.bar(
+                category_alerts,
+                x='Category',
+                y='ItemCount',
+                color='TotalShortage',
+                title='Inventory Alerts by Category',
+                labels={
+                    'ItemCount': 'Number of Items',
+                    'Category': 'Category',
+                    'TotalShortage': 'Total Shortage'
+                },
+                color_continuous_scale='Reds'
+            )
+            
+            # Force y-axis to use integers only
+            fig.update_yaxes(dtick=1, tick0=0)
+            
+            # Add data labels on top of bars
+            fig.update_traces(texttemplate='%{y}', textposition='outside')
+            
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            # For single category or no categories, display a more informative alternative
+            cols = st.columns(2)
+            
+            # First column: Show total items below reorder point
+            with cols[0]:
+                if not category_alerts.empty:
+                    category = category_alerts['Category'].iloc[0]
+                    items_count = int(category_alerts['ItemCount'].iloc[0])
+                    total_shortage = int(category_alerts['TotalShortage'].iloc[0])
+                    
+                    st.metric(
+                        f"Items Below Reorder ({category})",
+                        f"{items_count}",
+                        delta=None,
+                        delta_color="inverse"
+                    )
+                    
+                    # Add a small gauge or progress visualization
+                    st.markdown(f"**Total Shortage Amount: {total_shortage}**")
+                    st.progress(min(1.0, total_shortage / 100))  # Scale appropriately
+                else:
+                    st.metric("Items Below Reorder", "0", delta=None)
+            
+            # Second column: Show category breakdown if there's at least one category
+            with cols[1]:
+                if not category_alerts.empty:
+                    st.markdown("### Shortage by Category")
+                    for _, row in category_alerts.iterrows():
+                        st.markdown(f"**{row['Category']}**: {int(row['ItemCount'])} items, {int(row['TotalShortage'])} units short")
+                else:
+                    st.success("No inventory shortages detected!")
         
         # Display critical shortage items
         st.subheader("Critical Shortage Items")
@@ -477,6 +790,24 @@ def inventory_dashboard():
                 'ReorderLevel': 'blue'
             }
         )
+        
+        # Force y-axis to use integers only
+        fig.update_yaxes(dtick=10, tick0=0)
+        
+        # Add data labels on top of bars
+        fig.update_traces(texttemplate='%{y}', textposition='outside')
+        
+        # Adjust layout for better readability
+        fig.update_layout(
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
+        
         st.plotly_chart(fig, use_container_width=True)
         
         # Detailed inventory alerts
@@ -534,6 +865,7 @@ def productivity_dashboard():
                 'EmployeeRole': 'Role'
             }
         )
+        
         st.plotly_chart(fig, use_container_width=True)
         
         # Employee productivity metrics
@@ -583,6 +915,216 @@ def productivity_dashboard():
             st.dataframe(productivity_df)
     else:
         st.info("No productivity data available for the last 30 days")
+
+def add_process_flow_visualization():
+    """Add an interactive view of the production process flow with bottlenecks highlighted based on real data"""
+    st.header("🔄 Production Flow Analysis")
+    
+    # Query work centers from database
+    query = """
+    SELECT 
+        wc.Name, 
+        wc.Capacity, 
+        wc.CapacityUOM,
+        COUNT(m.MachineID) as MachineCount,
+        AVG(m.EfficiencyFactor) * 100 as AvgEfficiency,
+        SUM(CASE WHEN m.Status = 'running' THEN 1 ELSE 0 END) * 1.0 / COUNT(m.MachineID) as AvailabilityRate
+    FROM 
+        WorkCenters wc
+    JOIN 
+        Machines m ON wc.WorkCenterID = m.WorkCenterID
+    GROUP BY 
+        wc.Name, wc.Capacity, wc.CapacityUOM
+    ORDER BY 
+        wc.Name
+    """
+    
+    result = db_manager.execute_query(query)
+    
+    if result["success"]:
+        process_df = pd.DataFrame(result["rows"])
+        
+        # Calculate utilization based on current work orders
+        utilization_query = """
+        SELECT 
+            wc.Name as WorkCenterName,
+            COUNT(wo.OrderID) as ActiveOrders,
+            SUM(wo.Quantity) as TotalQuantity,
+            AVG(julianday(wo.PlannedEndTime) - julianday(wo.PlannedStartTime)) as AvgDuration
+        FROM 
+            WorkOrders wo
+        JOIN 
+            WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
+        WHERE 
+            wo.Status IN ('in_progress', 'scheduled')
+        GROUP BY 
+            wc.Name
+        """
+        
+        util_result = db_manager.execute_query(utilization_query)
+        
+        if util_result["success"]:
+            utilization_df = pd.DataFrame(util_result["rows"])
+            
+            # Merge with process data
+            process_df = process_df.merge(utilization_df, left_on='Name', right_on='WorkCenterName', how='left')
+            
+            # Fill NAs for work centers with no active orders
+            process_df['ActiveOrders'] = process_df['ActiveOrders'].fillna(0)
+            process_df['TotalQuantity'] = process_df['TotalQuantity'].fillna(0)
+            
+            # Calculate utilization - actual method would depend on your specific business logic
+            # This is a simplified version
+            process_df['Utilization'] = (process_df['ActiveOrders'] / process_df['Capacity']).clip(0, 1)
+            
+            # Categorize bottlenecks
+            process_df['Status'] = 'normal'
+            process_df.loc[process_df['Utilization'] > 0.7, 'Status'] = 'warning'
+            process_df.loc[process_df['Utilization'] > 0.85, 'Status'] = 'bottleneck'
+            
+            # Identify the constraint (Theory of Constraints)
+            if not process_df.empty:
+                bottleneck_row = process_df.loc[process_df['Utilization'].idxmax()]
+                bottleneck_name = bottleneck_row['Name']
+                bottleneck_utilization = bottleneck_row['Utilization']
+                
+                st.write(f"### Current System Constraint: {bottleneck_name} (Utilization: {bottleneck_utilization*100:.1f}%)")
+                
+                # Horizontal utilization chart
+                fig = px.bar(process_df, y='Name', x='Utilization', orientation='h',
+                            color='Status', color_discrete_map={'normal': 'green', 'warning': 'orange', 'bottleneck': 'red'},
+                            title='Process Utilization',
+                            labels={'Name': 'Work Center', 'Utilization': 'Utilization Rate'},
+                            range_x=[0, 1])
+                
+                # Add target line
+                fig.add_shape(
+                    type="line",
+                    x0=0.85,
+                    y0=-0.5,
+                    x1=0.85, 
+                    y1=len(process_df) - 0.5,
+                    line=dict(color="red", width=2, dash="dash"),
+                )
+                
+                fig.add_annotation(
+                    x=0.85,
+                    y=len(process_df) / 2,
+                    text="Bottleneck<br>Threshold",
+                    showarrow=False,
+                    xanchor="left",
+                    yanchor="middle"
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Get active work orders for the bottleneck
+                bottleneck_query = f"""
+                SELECT 
+                    p.Name as ProductName,
+                    wo.Quantity,
+                    wo.PlannedStartTime,
+                    wo.PlannedEndTime,
+                    wo.Status,
+                    wo.Priority
+                FROM 
+                    WorkOrders wo
+                JOIN 
+                    WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
+                JOIN 
+                    Products p ON wo.ProductID = p.ProductID
+                WHERE 
+                    wc.Name = '{bottleneck_name}'
+                    AND wo.Status IN ('in_progress', 'scheduled')
+                ORDER BY 
+                    wo.Priority DESC, wo.PlannedStartTime
+                LIMIT 5
+                """
+                
+                bottleneck_result = db_manager.execute_query(bottleneck_query)
+                
+                if bottleneck_result["success"] and bottleneck_result["row_count"] > 0:
+                    st.subheader(f"Active Orders at {bottleneck_name}")
+                    st.dataframe(pd.DataFrame(bottleneck_result["rows"]))
+                    
+                # Get machine details for bottleneck
+                machines_query = f"""
+                SELECT 
+                    m.Name as MachineName,
+                    m.Status,
+                    m.EfficiencyFactor * 100 as Efficiency,
+                    m.NextMaintenanceDate
+                FROM 
+                    Machines m
+                JOIN 
+                    WorkCenters wc ON m.WorkCenterID = wc.WorkCenterID
+                WHERE 
+                    wc.Name = '{bottleneck_name}'
+                """
+                
+                machines_result = db_manager.execute_query(machines_query)
+                
+                if machines_result["success"] and machines_result["row_count"] > 0:
+                    st.subheader(f"Machines in {bottleneck_name}")
+                    st.dataframe(pd.DataFrame(machines_result["rows"]))
+                    
+                # Show optimization recommendations
+                st.subheader("Bottleneck Analysis")
+                
+                st.write(f"**Primary constraint**: {bottleneck_name} (Utilization: {bottleneck_utilization*100:.1f}%)")
+                
+                # Query downtime data to identify potential improvement areas
+                downtime_query = f"""
+                SELECT 
+                    d.Reason,
+                    COUNT(d.DowntimeID) as EventCount,
+                    AVG(d.Duration) as AvgDuration,
+                    SUM(d.Duration) as TotalMinutes
+                FROM 
+                    Downtimes d
+                JOIN 
+                    Machines m ON d.MachineID = m.MachineID
+                JOIN 
+                    WorkCenters wc ON m.WorkCenterID = wc.WorkCenterID
+                WHERE 
+                    wc.Name = '{bottleneck_name}'
+                    AND d.StartTime >= date('now', '-30 day')
+                GROUP BY 
+                    d.Reason
+                ORDER BY 
+                    TotalMinutes DESC
+                LIMIT 3
+                """
+                
+                downtime_result = db_manager.execute_query(downtime_query)
+                
+                if downtime_result["success"] and downtime_result["row_count"] > 0:
+                    downtime_df = pd.DataFrame(downtime_result["rows"])
+                    
+                    st.write("**Top downtime reasons:**")
+                    
+                    for _, row in downtime_df.iterrows():
+                        st.write(f"- **{row['Reason']}**: {row['EventCount']} events, avg {row['AvgDuration']:.1f} min each")
+                        
+                    # Generate optimization recommendations based on actual data
+                    st.write("**Optimization options:**")
+                    
+                    # If maintenance is a top reason
+                    if 'Scheduled Maintenance' in downtime_df['Reason'].values or 'Equipment Failure' in downtime_df['Reason'].values:
+                        st.info("**Maintenance Optimization**: Review maintenance schedule to minimize impact on production")
+                    
+                    # If setup/changeover is a top reason
+                    if 'Setup/Changeover' in downtime_df['Reason'].values:
+                        st.info("**Setup Reduction**: Implement SMED principles to reduce changeover time")
+                    
+                    # General recommendations
+                    st.info("**Capacity Addition**: Consider overtime or additional shift at the bottleneck")
+            else:
+                st.warning("No process data available")
+        else:
+            st.error("Error retrieving utilization data")
+    else:
+        st.error("Error retrieving process data")
 
 # Combined dashboard for weekly overview
 def weekly_overview_dashboard():
@@ -769,7 +1311,17 @@ if __name__ == "__main__":
     st.set_page_config(page_title="Dashboard Tests", layout="wide")
     
     # Create tabs for testing each dashboard
-    tabs = st.tabs(["Production", "Equipment", "Quality", "Inventory", "Productivity", "Weekly"])
+    tabs = st.tabs([
+        "Production", 
+        "Equipment", 
+        "Quality", 
+        "Root Cause Analysis", 
+        "Inventory", 
+        "Productivity", 
+        "Process Flow", 
+        "Scenario Comparison", 
+        "Weekly"
+    ])
     
     with tabs[0]:
         production_summary_dashboard()
@@ -781,10 +1333,19 @@ if __name__ == "__main__":
         quality_dashboard()
     
     with tabs[3]:
-        inventory_dashboard()
+        add_root_cause_analysis()
     
     with tabs[4]:
-        productivity_dashboard()
+        inventory_dashboard()
     
     with tabs[5]:
+        productivity_dashboard()
+    
+    with tabs[6]:
+        add_process_flow_visualization()
+    
+    with tabs[7]:
+        add_scenario_comparison()
+    
+    with tabs[8]:
         weekly_overview_dashboard()
