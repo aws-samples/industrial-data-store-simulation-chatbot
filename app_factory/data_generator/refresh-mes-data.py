@@ -83,7 +83,7 @@ def truncate_all_tables(db_path):
         logger.error(f"Error truncating tables: {e}")
         return False
 
-def refresh_mes_data(db_path, config_path, seed=None, lookback_days=90, lookahead_days=90):
+def refresh_mes_data(db_path, config_path, seed=None, lookback_days=30, lookahead_days=90):
     """Refresh the MES database with new synthetic data."""
     
     # 1. Check if database exists
@@ -95,14 +95,21 @@ def refresh_mes_data(db_path, config_path, seed=None, lookback_days=90, lookahea
     if not truncate_all_tables(db_path):
         return False
     
-    # 3. Create a simulator instance
+    # 3. Create a simulator instance with improved parameters
     logger.info(f"Regenerating data with seed: {seed}")
-    simulator = MESSimulator(config_path, db_path, seed)
+    simulator = MESSimulator(
+        config_path, 
+        db_path, 
+        seed=seed,
+        lookback_days=lookback_days,
+        lookahead_days=lookahead_days
+    )
     
     # 4. Insert fresh data
     try:
         simulator.insert_data()
         logger.info(f"Data regeneration completed successfully at {db_path}")
+        logger.info(f"Generated {lookback_days} days of historical data and {lookahead_days} days of future data")
         return True
     except Exception as e:
         logger.error(f"Error regenerating data: {e}")
@@ -110,13 +117,13 @@ def refresh_mes_data(db_path, config_path, seed=None, lookback_days=90, lookahea
 
 def main():
     parser = argparse.ArgumentParser(description='Refresh synthetic MES data in existing database')
-    parser.add_argument('--config', default='app_factory/data_generator/data_pools.json', 
+    parser.add_argument('--config', default='data_pools.json', 
                         help='Path to configuration JSON file')
     parser.add_argument('--db', default='mes.db', 
                         help='Path to existing SQLite database file')
     parser.add_argument('--seed', type=int, 
                         help='Random seed for reproducibility. Omit for true randomness each run.')
-    parser.add_argument('--lookback', type=int, default=90,
+    parser.add_argument('--lookback', type=int, default=30,
                         help='Number of days to look back for historical data')
     parser.add_argument('--lookahead', type=int, default=90,
                         help='Number of days to look ahead for future data')
