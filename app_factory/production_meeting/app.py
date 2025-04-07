@@ -21,7 +21,6 @@ from production_meeting.dashboards import (
     inventory_dashboard,
     productivity_dashboard,
     weekly_overview_dashboard,
-    add_process_flow_visualization,
     add_root_cause_analysis,
 )
 from production_meeting.action_tracker import display_action_tracker
@@ -125,7 +124,6 @@ def run_production_meeting():
         "⚠️ Quality Issues",
         "📦 Inventory Alerts",
         "👥 Productivity",
-        "🔄 Process Flow",
         "🔍 Root Cause Analysis", 
         "🤖 AI Insights",
         "📋 Action Items",
@@ -157,16 +155,12 @@ def run_production_meeting():
     with tabs[4]:
         productivity_dashboard()
     
-    # Tab 6: Process Flow
+    # Tab 6: Root Cause Analysis
     with tabs[5]:
-        add_process_flow_visualization()
-    
-    # Tab 7: Root Cause Analysis
-    with tabs[6]:
         add_root_cause_analysis()
     
-    # Tab 8: AI Insights - Enhanced with structured selection options
-    with tabs[7]:
+    # Tab 7: AI Insights - Enhanced with structured selection options
+    with tabs[6]:
         # Let user select which type of AI analysis to show
         analysis_type = st.radio(
             "Select Analysis Type:",
@@ -191,12 +185,12 @@ def run_production_meeting():
         else:  # Conversational Q&A
             add_conversational_analysis()
     
-    # Tab 9: Action Items
-    with tabs[8]:
+    # Tab 8: Action Items
+    with tabs[7]:
         display_action_tracker(st.session_state.meeting_data["date"])
     
-    # Tab 10: Meeting Notes
-    with tabs[9]:
+    # Tab 9: Meeting Notes
+    with tabs[8]:
         st.header("📝 Meeting Notes")
         
         # Meeting notes input
@@ -212,8 +206,8 @@ def run_production_meeting():
         with st.expander("Weekly Performance Overview", expanded=False):
             weekly_overview_dashboard()
     
-    # Tab 11: Reports
-    with tabs[10]:
+    # Tab 10: Reports
+    with tabs[9]:
         report_options = st.radio(
             "Report Type:",
             options=["Standard Report", "AI-Enhanced Executive Summary"],

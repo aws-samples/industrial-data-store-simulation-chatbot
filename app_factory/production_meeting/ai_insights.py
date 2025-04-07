@@ -17,9 +17,9 @@ from shared.bedrock_utils import get_bedrock_client, get_available_bedrock_model
 # Initialize database manager
 db_manager = DatabaseManager()
 
-def generate_ai_insight(context, query=None, dashboard_data=None, model_id=None, temperature=0.1):
+def generate_ai_insight(context, query=None, dashboard_data=None, model_id=None, temperature=0.1, include_historical=True):
     """
-    Generate AI insights based on dashboard data
+    Generate AI insights based on dashboard data with historical context
     
     Args:
         context (str): The context for the AI (production, quality, etc.)
@@ -27,6 +27,7 @@ def generate_ai_insight(context, query=None, dashboard_data=None, model_id=None,
         dashboard_data (dict, optional): Preloaded dashboard data
         model_id (str, optional): Bedrock model ID to use
         temperature (float, optional): Temperature for generation
+        include_historical (bool): Whether to include historical context
         
     Returns:
         str: AI-generated insight
@@ -59,7 +60,7 @@ def generate_ai_insight(context, query=None, dashboard_data=None, model_id=None,
         dashboard_data = {}
         
         if context in ['production', 'summary', 'all']:
-            # Get production data
+            # Get production data for yesterday
             yesterday_data = db_manager.get_daily_production_summary(days_back=1)
             if not yesterday_data.empty:
                 dashboard_data['production'] = yesterday_data.to_dict(orient='records')
@@ -68,6 +69,45 @@ def generate_ai_insight(context, query=None, dashboard_data=None, model_id=None,
             work_order_status = db_manager.get_work_order_status()
             if not work_order_status.empty:
                 dashboard_data['work_orders'] = work_order_status.to_dict(orient='records')
+                
+            # Add historical production data (new)
+            if include_historical:
+                historical_query = """
+                SELECT 
+                    date(wo.ActualEndTime) as ProductionDate,
+                    COUNT(wo.OrderID) as CompletedOrders,
+                    SUM(wo.Quantity) as PlannedQuantity,
+                    SUM(wo.ActualProduction) as ActualProduction,
+                    ROUND(SUM(wo.ActualProduction) * 100.0 / SUM(wo.Quantity), 2) as CompletionPercentage
+                FROM 
+                    WorkOrders wo
+                WHERE 
+                    wo.Status = 'completed'
+                    AND wo.ActualEndTime >= date('now', '-14 day')
+                    AND wo.ActualEndTime < date('now', '-1 day')
+                GROUP BY 
+                    date(wo.ActualEndTime)
+                ORDER BY 
+                    ProductionDate
+                """
+                result = db_manager.execute_query(historical_query)
+                if result["success"] and result["row_count"] > 0:
+                    dashboard_data['historical_production'] = result["rows"]
+                    
+                    # Calculate production trends
+                    if len(result["rows"]) > 0:
+                        completion_rates = [row.get('CompletionPercentage', 0) for row in result["rows"]]
+                        if completion_rates:
+                            avg_completion = sum(completion_rates) / len(completion_rates)
+                            trend = "improving" if len(completion_rates) > 1 and completion_rates[-1] > completion_rates[0] else "declining"
+                            
+                            dashboard_data['production_trends'] = {
+                                "avg_completion_rate": avg_completion,
+                                "trend_direction": trend,
+                                "days_analyzed": len(result["rows"]),
+                                "min_completion": min(completion_rates),
+                                "max_completion": max(completion_rates)
+                            }
         
         if context in ['machines', 'equipment', 'all']:
             # Get machine status
@@ -79,6 +119,62 @@ def generate_ai_insight(context, query=None, dashboard_data=None, model_id=None,
             maintenance_data = db_manager.get_upcoming_maintenance(days_ahead=7)
             if not maintenance_data.empty:
                 dashboard_data['maintenance'] = maintenance_data.to_dict(orient='records')
+                
+            # Add historical equipment data (new)
+            if include_historical:
+                historical_oee_query = """
+                SELECT 
+                    date(oee.Date) as MeasurementDate,
+                    ROUND(AVG(oee.OEE) * 100, 2) as AvgOEE,
+                    ROUND(AVG(oee.Availability) * 100, 2) as AvgAvailability,
+                    ROUND(AVG(oee.Performance) * 100, 2) as AvgPerformance,
+                    ROUND(AVG(oee.Quality) * 100, 2) as AvgQuality
+                FROM 
+                    OEEMetrics oee
+                WHERE 
+                    oee.Date >= date('now', '-14 day')
+                GROUP BY 
+                    date(oee.Date)
+                ORDER BY 
+                    MeasurementDate
+                """
+                result = db_manager.execute_query(historical_oee_query)
+                if result["success"] and result["row_count"] > 0:
+                    dashboard_data['historical_oee'] = result["rows"]
+                    
+                    # Calculate OEE trends
+                    if len(result["rows"]) > 0:
+                        oee_values = [row.get('AvgOEE', 0) for row in result["rows"]]
+                        if oee_values:
+                            avg_oee = sum(oee_values) / len(oee_values)
+                            trend = "improving" if len(oee_values) > 1 and oee_values[-1] > oee_values[0] else "declining"
+                            
+                            dashboard_data['oee_trends'] = {
+                                "avg_oee": avg_oee,
+                                "trend_direction": trend,
+                                "days_analyzed": len(result["rows"]),
+                                "min_oee": min(oee_values),
+                                "max_oee": max(oee_values)
+                            }
+                
+                # Get historical downtime data
+                historical_downtime_query = """
+                SELECT 
+                    date(d.StartTime) as DowntimeDate,
+                    d.Category as DowntimeCategory,
+                    SUM(d.Duration) as TotalMinutes
+                FROM 
+                    Downtimes d
+                WHERE 
+                    d.StartTime >= date('now', '-14 day')
+                GROUP BY 
+                    date(d.StartTime), d.Category
+                ORDER BY 
+                    DowntimeDate
+                """
+                result = db_manager.execute_query(historical_downtime_query)
+                if result["success"] and result["row_count"] > 0:
+                    dashboard_data['historical_downtime'] = result["rows"]
         
         if context in ['quality', 'all']:
             # Get quality data
@@ -116,110 +212,291 @@ def generate_ai_insight(context, query=None, dashboard_data=None, model_id=None,
             result = db_manager.execute_query(defects_query)
             if result["success"] and result["row_count"] > 0:
                 dashboard_data['defects'] = result["rows"]
+                
+            # Add historical quality data (new)
+            if include_historical:
+                historical_quality_query = """
+                SELECT 
+                    date(qc.Date) as InspectionDate,
+                    COUNT(qc.CheckID) as InspectionCount,
+                    ROUND(AVG(qc.DefectRate) * 100, 2) as AvgDefectRate,
+                    ROUND(AVG(qc.YieldRate) * 100, 2) as AvgYieldRate
+                FROM 
+                    QualityControl qc
+                WHERE 
+                    qc.Date >= date('now', '-14 day')
+                GROUP BY 
+                    date(qc.Date)
+                ORDER BY 
+                    InspectionDate
+                """
+                result = db_manager.execute_query(historical_quality_query)
+                if result["success"] and result["row_count"] > 0:
+                    dashboard_data['historical_quality'] = result["rows"]
+                    
+                    # Calculate quality trends
+                    if len(result["rows"]) > 0:
+                        defect_rates = [row.get('AvgDefectRate', 0) for row in result["rows"]]
+                        yield_rates = [row.get('AvgYieldRate', 0) for row in result["rows"]]
+                        
+                        if defect_rates and yield_rates:
+                            avg_defect = sum(defect_rates) / len(defect_rates)
+                            avg_yield = sum(yield_rates) / len(yield_rates)
+                            
+                            defect_trend = "improving" if len(defect_rates) > 1 and defect_rates[-1] < defect_rates[0] else "worsening"
+                            yield_trend = "improving" if len(yield_rates) > 1 and yield_rates[-1] > yield_rates[0] else "declining"
+                            
+                            dashboard_data['quality_trends'] = {
+                                "avg_defect_rate": avg_defect,
+                                "defect_trend": defect_trend,
+                                "avg_yield_rate": avg_yield,
+                                "yield_trend": yield_trend,
+                                "days_analyzed": len(result["rows"])
+                            }
         
         if context in ['inventory', 'all']:
             # Get inventory alerts
             inventory_alerts = db_manager.get_inventory_alerts()
             if not inventory_alerts.empty:
                 dashboard_data['inventory_alerts'] = inventory_alerts.to_dict(orient='records')
+                
+            # Add historical inventory data (new)
+            if include_historical:
+                # Since the demo doesn't have historical inventory, we'll create a proxy based on consumption
+                historical_consumption_query = """
+                SELECT 
+                    date(mc.ConsumptionDate) as ConsumptionDate,
+                    i.Category as ItemCategory,
+                    COUNT(DISTINCT i.ItemID) as ItemCount,
+                    SUM(mc.ActualQuantity) as TotalConsumption
+                FROM 
+                    MaterialConsumption mc
+                JOIN 
+                    Inventory i ON mc.ItemID = i.ItemID
+                WHERE 
+                    mc.ConsumptionDate >= date('now', '-14 day')
+                GROUP BY 
+                    date(mc.ConsumptionDate), i.Category
+                ORDER BY 
+                    ConsumptionDate
+                """
+                result = db_manager.execute_query(historical_consumption_query)
+                if result["success"] and result["row_count"] > 0:
+                    dashboard_data['historical_consumption'] = result["rows"]
     
     # Create prompt for the model based on context
     if query:
-        # User-provided query
-        prompt = f"""
-        You are an AI Manufacturing Analyst for an e-bike production facility. Based on the following manufacturing data, 
-        please answer this specific question:
-        
-        QUESTION: {query}
-        
-        DATA:
-        {json.dumps(dashboard_data, indent=2)}
-        
-        Provide a concise, informative, and fact-based answer focusing on the most important insights 
-        related to the question. If the data doesn't provide sufficient information to answer the question, 
-        clearly state what's missing. Use bullet points where appropriate.
-        """
+        # User-provided query with historical context
+        if include_historical:
+            prompt = f"""
+            You are an AI Manufacturing Analyst for an e-bike production facility. Based on the following manufacturing data, 
+            please answer this specific question.
+            
+            QUESTION: {query}
+            
+            Importantly, include historical context and trends in your analysis where relevant. Compare current metrics with 
+            historical averages and identify any significant patterns or changes. Look for correlations between different 
+            metrics that might explain the current situation.
+            
+            DATA:
+            {json.dumps(dashboard_data, indent=2)}
+            
+            Provide a concise, informative, and fact-based answer focusing on the most important insights 
+            related to the question. If the data doesn't provide sufficient information to answer the question, 
+            clearly state what's missing. Use bullet points where appropriate.
+            """
+        else:
+            # Original prompt without historical context
+            prompt = f"""
+            You are an AI Manufacturing Analyst for an e-bike production facility. Based on the following manufacturing data, 
+            please answer this specific question:
+            
+            QUESTION: {query}
+            
+            DATA:
+            {json.dumps(dashboard_data, indent=2)}
+            
+            Provide a concise, informative, and fact-based answer focusing on the most important insights 
+            related to the question. If the data doesn't provide sufficient information to answer the question, 
+            clearly state what's missing. Use bullet points where appropriate.
+            """
     else:
         # Generate context-specific insights
         if context == 'production':
-            prompt = """
-            You are an AI Manufacturing Analyst for an e-bike production facility. Based on the production data provided,
-            give a short, insightful analysis of:
-            
-            1. Production performance against targets
-            2. Key bottlenecks or issues to be aware of
-            3. Recommendations for improving throughput or efficiency
-            
-            Be concise but specific. Use bullet points for key insights. Focus on actionable information
-            and patterns rather than just repeating the data.
-            """
+            if include_historical:
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on the production data provided,
+                give a short, insightful analysis of:
+                
+                1. Production performance against targets
+                2. How current performance compares to historical trends (look at 14-day patterns)
+                3. Key bottlenecks or issues to be aware of
+                4. Recommendations for improving throughput or efficiency
+                
+                Be concise but specific. Use bullet points for key insights. Focus on changes from historical patterns
+                and actionable information rather than just repeating the data. Look for correlations between metrics
+                that might explain current performance.
+                """
+            else:
+                # Original prompt without historical context
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on the production data provided,
+                give a short, insightful analysis of:
+                
+                1. Production performance against targets
+                2. Key bottlenecks or issues to be aware of
+                3. Recommendations for improving throughput or efficiency
+                
+                Be concise but specific. Use bullet points for key insights. Focus on actionable information
+                and patterns rather than just repeating the data.
+                """
             
         elif context == 'machines':
-            prompt = """
-            You are an AI Manufacturing Analyst for an e-bike production facility. Based on the equipment data provided,
-            give a short, insightful analysis of:
-            
-            1. Machine availability and performance
-            2. Critical maintenance issues or upcoming concerns
-            3. Recommendations for improving equipment reliability and efficiency
-            
-            Be concise but specific. Use bullet points for key insights. Focus on actionable information
-            and patterns rather than just repeating the data.
-            """
+            if include_historical:
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on the equipment data provided,
+                give a short, insightful analysis of:
+                
+                1. Machine availability and performance
+                2. How current equipment metrics compare to historical trends (look at 14-day patterns)
+                3. Critical maintenance issues or upcoming concerns
+                4. Recommendations for improving equipment reliability and efficiency
+                
+                Be concise but specific. Use bullet points for key insights. Focus on changes from historical patterns
+                and actionable information rather than just repeating the data. Look for correlations between metrics
+                that might explain current performance.
+                """
+            else:
+                # Original prompt without historical context
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on the equipment data provided,
+                give a short, insightful analysis of:
+                
+                1. Machine availability and performance
+                2. Critical maintenance issues or upcoming concerns
+                3. Recommendations for improving equipment reliability and efficiency
+                
+                Be concise but specific. Use bullet points for key insights. Focus on actionable information
+                and patterns rather than just repeating the data.
+                """
             
         elif context == 'quality':
-            prompt = """
-            You are an AI Manufacturing Analyst for an e-bike production facility. Based on the quality data provided,
-            give a short, insightful analysis of:
-            
-            1. Quality metrics and defect patterns
-            2. Critical quality issues to address
-            3. Recommendations for improving quality and reducing defects
-            
-            Be concise but specific. Use bullet points for key insights. Focus on actionable information
-            and patterns rather than just repeating the data.
-            """
+            if include_historical:
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on the quality data provided,
+                give a short, insightful analysis of:
+                
+                1. Quality metrics and defect patterns
+                2. How current quality metrics compare to historical trends (look at 14-day patterns)
+                3. Critical quality issues to address
+                4. Recommendations for improving quality and reducing defects
+                
+                Be concise but specific. Use bullet points for key insights. Focus on changes from historical patterns
+                and actionable information rather than just repeating the data. Look for correlations between metrics
+                that might explain current quality issues.
+                """
+            else:
+                # Original prompt without historical context
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on the quality data provided,
+                give a short, insightful analysis of:
+                
+                1. Quality metrics and defect patterns
+                2. Critical quality issues to address
+                3. Recommendations for improving quality and reducing defects
+                
+                Be concise but specific. Use bullet points for key insights. Focus on actionable information
+                and patterns rather than just repeating the data.
+                """
             
         elif context == 'inventory':
-            prompt = """
-            You are an AI Manufacturing Analyst for an e-bike production facility. Based on the inventory data provided,
-            give a short, insightful analysis of:
-            
-            1. Critical inventory shortages or concerns
-            2. Inventory trends and reordering priorities
-            3. Recommendations for inventory management
-            
-            Be concise but specific. Use bullet points for key insights. Focus on actionable information
-            and patterns rather than just repeating the data.
-            """
+            if include_historical:
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on the inventory data provided,
+                give a short, insightful analysis of:
+                
+                1. Critical inventory shortages or concerns
+                2. How current inventory levels compare to historical consumption patterns
+                3. Inventory trends and reordering priorities
+                4. Recommendations for inventory management
+                
+                Be concise but specific. Use bullet points for key insights. Focus on changes from historical patterns
+                and actionable information rather than just repeating the data. Look for correlations between metrics
+                that might explain current inventory situation.
+                """
+            else:
+                # Original prompt without historical context
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on the inventory data provided,
+                give a short, insightful analysis of:
+                
+                1. Critical inventory shortages or concerns
+                2. Inventory trends and reordering priorities
+                3. Recommendations for inventory management
+                
+                Be concise but specific. Use bullet points for key insights. Focus on actionable information
+                and patterns rather than just repeating the data.
+                """
             
         elif context == 'summary':
-            prompt = """
-            You are an AI Manufacturing Analyst for an e-bike production facility. Based on all the data provided,
-            give a concise daily production meeting summary covering:
-            
-            1. Overall production status and key metrics
-            2. Critical issues requiring immediate attention
-            3. Top recommendations for today's focus
-            
-            Be very concise - this should be readable in under 30 seconds. Use bullet points for key insights.
-            Focus on actionable information a production manager needs to know right now.
-            """
+            if include_historical:
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on all the data provided,
+                give a concise daily production meeting summary covering:
+                
+                1. Overall production status and key metrics compared to historical trends
+                2. Critical issues requiring immediate attention
+                3. Top recommendations for today's focus
+                
+                Be very concise - this should be readable in under 30 seconds. Use bullet points for key insights.
+                Focus on actionable information a production manager needs to know right now. Highlight significant
+                changes from historical patterns that require attention.
+                """
+            else:
+                # Original prompt without historical context
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on all the data provided,
+                give a concise daily production meeting summary covering:
+                
+                1. Overall production status and key metrics
+                2. Critical issues requiring immediate attention
+                3. Top recommendations for today's focus
+                
+                Be very concise - this should be readable in under 30 seconds. Use bullet points for key insights.
+                Focus on actionable information a production manager needs to know right now.
+                """
             
         else:  # 'all' or any other value
-            prompt = """
-            You are an AI Manufacturing Analyst for an e-bike production facility. Based on all the data provided,
-            give a comprehensive analysis of the current manufacturing operations, including:
-            
-            1. Production performance and key metrics
-            2. Equipment status and maintenance concerns
-            3. Quality issues and defect patterns
-            4. Inventory status and potential shortages
-            5. Recommended actions and priorities
-            
-            Be concise but thorough. Use bullet points for key insights. Focus on actionable information
-            and patterns rather than just repeating the data.
-            """
+            if include_historical:
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on all the data provided,
+                give a comprehensive analysis of the current manufacturing operations, including:
+                
+                1. Production performance and key metrics compared to historical trends
+                2. Equipment status, maintenance concerns, and performance trends
+                3. Quality issues, defect patterns, and quality trend analysis
+                4. Inventory status, potential shortages, and consumption patterns
+                5. Recommended actions and priorities based on historical context
+                
+                Be concise but thorough. Use bullet points for key insights. Focus on actionable information
+                and significant changes from historical patterns rather than just repeating the data.
+                Look for correlations between different areas that might explain current performance.
+                """
+            else:
+                # Original prompt without historical context
+                prompt = """
+                You are an AI Manufacturing Analyst for an e-bike production facility. Based on all the data provided,
+                give a comprehensive analysis of the current manufacturing operations, including:
+                
+                1. Production performance and key metrics
+                2. Equipment status and maintenance concerns
+                3. Quality issues and defect patterns
+                4. Inventory status and potential shortages
+                5. Recommended actions and priorities
+                
+                Be concise but thorough. Use bullet points for key insights. Focus on actionable information
+                and patterns rather than just repeating the data.
+                """
     
     # Add data to prompt
     if context != 'summary':

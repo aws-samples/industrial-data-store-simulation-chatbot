@@ -80,21 +80,7 @@ def main():
         run_mes_chat()
     elif st.session_state.app_mode == "production_meeting":
         run_production_meeting()
-    
-    # Feature comparison table
-    with st.expander("Feature Comparison"):
-        st.markdown("""
-        | Feature | MES Chat | Production Meeting |
-        |---------|----------|-------------------|
-        | **Focus** | Ad-hoc analysis | Daily operations |
-        | **Interface** | Conversational | Dashboard |
-        | **Time frame** | Historical & current | Today & yesterday |
-        | **Best for** | Detailed analysis | Team meetings |
-        | **Data access** | Full MES database | Production KPIs |
-        | **Visualization** | Dynamic (query-based) | Pre-configured |
-        | **User interaction** | Natural language | Point & click |
-        """)
-    
+
     # Footer
     st.divider()
     st.caption("E-bike Manufacturing Facility Demo • MES & Production Meeting Simulator")
