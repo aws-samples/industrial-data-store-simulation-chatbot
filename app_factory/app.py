@@ -30,7 +30,6 @@ def main():
     col1, col2 = st.columns([1, 5])
     
     with col1:
-        # You can replace this with your logo if available
         st.image("https://upload.wikimedia.org/wikipedia/commons/9/93/Amazon_Web_Services_Logo.svg", width=80)
         
     with col2:
@@ -96,7 +95,7 @@ def main():
         | **User interaction** | Natural language | Point & click |
         """)
     
-    # Footer - Using native Streamlit
+    # Footer
     st.divider()
     st.caption("E-bike Manufacturing Facility Demo • MES & Production Meeting Simulator")
 

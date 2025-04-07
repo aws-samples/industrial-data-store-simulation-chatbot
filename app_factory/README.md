@@ -10,12 +10,14 @@ This application is built on a synthetic MES database for an e-bike manufacturin
 ## Key Features
 
 ### MES Insight Chat
+
 - Natural language interface to query MES data
 - Interactive conversation with an AI assistant
 - Data visualization for query results
 - Deep insights into production processes, inventory, quality, and equipment
 
 ### Daily Production Meeting
+
 - Structured dashboard for daily production meetings
 - Real-time KPIs and production metrics
 - Equipment status monitoring
@@ -27,6 +29,7 @@ This application is built on a synthetic MES database for an e-bike manufacturin
 ## Installation
 
 ### Prerequisites
+
 - Python 3.9 or higher
 - [SQLite](https://www.sqlite.org/download.html)
 - AWS account with access to Amazon Bedrock
@@ -39,6 +42,7 @@ This application is built on a synthetic MES database for an e-bike manufacturin
    If using Amazon SageMaker AI JupyterLab (recommended), you can skip to step 3.
 
    Create and activate a Python virtual environment:
+
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate  # On Windows: .venv\Scripts\activate
@@ -47,7 +51,7 @@ This application is built on a synthetic MES database for an e-bike manufacturin
 2. **AWS Configuration**
 
    Configure AWS environment variables by creating a `.env` file:
-   
+
    ```text
    AWS_REGION="YourRegion" #example us-east-1
    AWS_PROFILE="myprofile" #from ~/.aws/config
@@ -82,6 +86,7 @@ This application is built on a synthetic MES database for an e-bike manufacturin
    ```
 
 5. **Run the Application**
+
    ```bash
    # Start the application
    streamlit run app_factory/app.py
@@ -91,23 +96,26 @@ This application is built on a synthetic MES database for an e-bike manufacturin
 
 Once the application is running, you can choose between:
 
-### MES Insight Chat
+### Application - MES Insight Chat
 
 In the MES Chat interface, you can:
+
 1. Ask questions about production data in natural language
 2. Select example questions from predefined categories
 3. View query results in tabular or chart format
 4. Download data as CSV
 
 Example questions:
+
 - "What's our current production schedule for the next week?"
 - "Which inventory items are below their reorder level?"
 - "What's the OEE for our Frame Welding machines?"
 - "Show me the most common defect types and their severity"
 
-### Daily Production Meeting
+### Application - Daily Production Meeting
 
 The Production Meeting dashboard includes:
+
 1. **Production Summary** - KPIs, completion rates, and current work orders
 2. **Equipment Status** - Machine availability and upcoming maintenance
 3. **Quality Issues** - Defect rates and quality metrics
@@ -121,7 +129,7 @@ The meeting interface is designed for daily lean meetings, shift handovers, or p
 
 ## Project Structure
 
-```
+```text
 app_factory/
 ├── app.py                      # Main entry point
 ├── shared/                     # Shared utilities
@@ -140,6 +148,7 @@ app_factory/
 ├── data_generator/             # Database generator
 │   ├── __init__.py
 │   ├── sqlite-synthetic-mes-data.py  # MES database generator
+│   ├── refresh-mes-data.py     # Refresh data
 │   └── data_pools.json         # Configuration for database generator
 └── data/                       # Data files
     ├── sample_questions.json   # Example questions
@@ -149,6 +158,7 @@ app_factory/
 ## Database Schema
 
 The MES database includes tables for:
+
 - Products (e-bikes, components, and parts)
 - Work Orders (production jobs with schedules and status)
 - Inventory (raw materials, components, and stock levels)
@@ -162,29 +172,33 @@ The MES database includes tables for:
 
 ## AWS Configuration
 
-This application uses Amazon Bedrock for natural language understanding and AI capabilities. The following Bedrock models are supported:
-- Claude 3 (Haiku, Sonnet, Opus)
+This application uses Amazon Bedrock for natural language understanding and AI capabilities. For the list of supported models, see [Supported models and model features](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html) and filter by models that support both **Converse API** and **Tool use**, such as:
+
+- Claude 3, 3.5, 3.7 (Haiku, Sonnet, Opus)
 - Amazon Nova (Micro, Lite, Pro)
 - Other models that support the Converse API and tool use
 
-Ensure your AWS account has access to these models and appropriate permissions.
+Ensure your AWS account has access to these models and appropriate permissions. See [Add or remove access to Amazon Bedrock foundation models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access-modify.html) for detailed instructions.
 
 ## Customization
 
 ### Adding Custom Questions
+
 Edit `data/sample_questions.json` to add your own example questions.
 
 ### Meeting Templates
+
 Modify `data/meeting_templates.json` to create custom meeting templates.
 
 ### Database Customization
-The database is generated using `data_generator/sqlite-synthetic-mes-data.py`. You can modify this script to create different products, work centers, or other manufacturing elements.
+
+The database is generated using `data_generator/sqlite-synthetic-mes-data.py` and leveraging the data from `data_generator/data_pools.json`. You can modify this script to create different products, work centers, or other manufacturing elements.
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Acknowledgments
+## Frameworks and tools used
 
 - Data generation uses the Faker library for creating realistic synthetic data
 - Visualizations are powered by Plotly
