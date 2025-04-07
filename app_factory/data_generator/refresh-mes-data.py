@@ -117,7 +117,7 @@ def refresh_mes_data(db_path, config_path, seed=None, lookback_days=30, lookahea
 
 def main():
     parser = argparse.ArgumentParser(description='Refresh synthetic MES data in existing database')
-    parser.add_argument('--config', default='data_pools.json', 
+    parser.add_argument('--config', default='data_generator/data_pools.json', 
                         help='Path to configuration JSON file')
     parser.add_argument('--db', default='mes.db', 
                         help='Path to existing SQLite database file')

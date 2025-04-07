@@ -1742,7 +1742,7 @@ def main():
     """Main function to run the MES simulator."""
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Generate synthetic MES data')
-    parser.add_argument('--config', default='data_pools.json', help='Path to configuration JSON file')
+    parser.add_argument('--config', default='data_generatot/data_pools.json', help='Path to configuration JSON file')
     parser.add_argument('--db', default='mes.db', help='Path to SQLite database file')
     parser.add_argument('--seed', type=int, help='Random seed for reproducibility')
     parser.add_argument('--lookback', type=int, default=90, help='Number of days to look back for historical data')

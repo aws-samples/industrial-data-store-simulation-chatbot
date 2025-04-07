@@ -30,12 +30,13 @@ This application is built on a synthetic MES database for an e-bike manufacturin
 - Python 3.9 or higher
 - [SQLite](https://www.sqlite.org/download.html)
 - AWS account with access to Amazon Bedrock
+  - Access to at least one model with support for `Converse` and `Tool use`. See [Supported models and model features](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html)
 
 ### Setup
 
 1. **Environment Setup**
 
-   If using Amazon SageMaker AI JupyterLab (recommended), you can skip to step 1.2.
+   If using Amazon SageMaker AI JupyterLab (recommended), you can skip to step 3.
 
    Create and activate a Python virtual environment:
    ```bash
@@ -46,28 +47,38 @@ This application is built on a synthetic MES database for an e-bike manufacturin
 2. **AWS Configuration**
 
    Configure AWS environment variables by creating a `.env` file:
+   
    ```text
    AWS_REGION="YourRegion" #example us-east-1
    AWS_PROFILE="myprofile" #from ~/.aws/config
    ```
 
 3. **Install Required Packages**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 4. **Generate the MES Database**
+
    ```bash
    # Create tables and simulation data
-   python3 app_factory/data_generator/sqlite-synthetic-mes-data.py
+   python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 90
    ```
-   
+
    This will create the database file `mes.db` in the project root directory.
 
    For additional options:
+
    ```bash
    # Get help on configuration options
    python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --help
+   ```
+
+   If you have a need to refresh data without recreating the database, you can simply run:
+
+   ```bash
+   python3 app_factory/data_generator/refresh-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 90
    ```
 
 5. **Run the Application**
