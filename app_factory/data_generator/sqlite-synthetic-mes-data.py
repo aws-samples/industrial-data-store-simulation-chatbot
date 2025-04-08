@@ -463,8 +463,8 @@ class MESSimulator:
         return product_ids_map
     
     def insert_inventory(self, session, supplier_ids):
-        """Insert inventory data."""
-        logger.info("Inserting inventory items")
+        """Insert inventory data"""
+        logger.info("Inserting inventory items with realistic supply patterns")
         inventory_ids_map = {}  # Map inventory names to their IDs
         cost_range = self.data_pools['cost_ranges']['components']
         lead_time_range = self.data_pools['lead_time_range']
@@ -474,6 +474,40 @@ class MESSimulator:
         
         # Storage locations
         locations = self.data_pools['storage_locations']
+        
+        # CRITICAL: These items must NEVER have zero inventory
+        critical_raw_materials = ["Steel Bolts", "Rubber Grips", "Aluminum Tubing"]
+        
+        # Items that are always well-stocked (will be ABOVE reorder level)
+        always_well_stocked = [
+            "Lubricating Oil", "Chain Links", "Valve Stems", "Frame Paint", 
+            "Seat Padding", "Rim Strips", "Pedal Assemblies", "Handlebar Tubing",
+            "Wheel Spokes", "Bottom Bracket Shells", "Gear Cogs"
+        ]
+        
+        # Items that may have low inventory (potential shortages)
+        shortage_candidates = [
+            "Lithium-ion Cells", "Control Circuits", "Microcontrollers", 
+            "Battery Casings", "Derailleur Springs", "Dropout Hangers", 
+            "Gear Shifters", "Electric Motors", "Chainring Bolts", "Brake Pads",
+            "Brake Cables", "Tire Rubber", "Ball Bearings"
+        ]
+        
+        # Split items into groups for different inventory treatment
+        random.shuffle(shortage_candidates)
+        active_shortage_items = shortage_candidates[:len(shortage_candidates) // 3]  # Take about 1/3 of candidates
+        
+        # Store inventory status for reporting
+        inventory_status = {
+            "well_stocked": 0,
+            "adequate": 0,
+            "low": 0,
+            "critical": 0,
+            "overrides": 0  # Count how many times we had to override to prevent zero inventory
+        }
+        
+        # Prepare the inventory data
+        inventory_data = []
         
         for name in self.data_pools['inventory_names']:
             # Determine category based on item name
@@ -490,49 +524,120 @@ class MESSimulator:
             else:
                 category = random.choice(categories)
             
-            # Generate realistic inventory levels - raw materials higher, finished goods lower
-            if category == "Raw Material":
-                quantity = random.randint(200, 2000)
+            # Get supplier - match suppliers to categories
+            supplier_id = random.choice(supplier_ids)
+            
+            # Determine lead time - more realistic distribution
+            lead_time = random.randint(
+                lead_time_range['min'], 
+                lead_time_range['max']
+            )
+            
+            # Set reorder levels based on category and criticality
+            if name in critical_raw_materials:
+                # Critical raw materials have higher reorder levels
+                reorder_level = random.randint(300, 500)
+            elif category == "Raw Material":
                 reorder_level = random.randint(100, 300)
             elif category in ["Electronic Component", "Mechanical Component"]:
-                quantity = random.randint(50, 500)
                 reorder_level = random.randint(30, 100)
             elif category == "Assembly":
-                quantity = random.randint(20, 100)
-                reorder_level = random.randint(10, 30)
+                reorder_level = random.randint(10, 40)
             else:
-                quantity = random.randint(10, 100)
-                reorder_level = random.randint(5, 20)
+                reorder_level = random.randint(15, 50)
             
-            # Occasionally create inventory shortages
-            if random.random() < 0.15:  # 15% chance of shortage
-                quantity = max(0, int(reorder_level * random.uniform(0.3, 0.9)))
+            # SEPARATE LOGIC FOR CRITICAL RAW MATERIALS
+            if name in critical_raw_materials:
+                # Critical raw materials - choose a low but NON-ZERO quantity
+                # These should be low to show in shortage reports
+                minimum_qty = max(1, int(reorder_level * 0.1))  # At least 10% or 1 unit
+                max_qty = int(reorder_level * 0.3)              # At most 30% 
+                quantity = random.randint(minimum_qty, max_qty)
+                
+                # To avoid any possibility of zero, double-check
+                if quantity <= 0:
+                    quantity = minimum_qty
+                    inventory_status["overrides"] += 1
+                    
+                # Mark as low inventory
+                inventory_status["low"] += 1
             
-            # Create some critical shortages
-            if random.random() < 0.05:  # 5% chance of critical shortage
-                quantity = max(0, int(reorder_level * random.uniform(0, 0.3)))
+            # Handle standard inventory logic for non-critical items
+            elif name in always_well_stocked:
+                # Well-stocked items - significantly above reorder level
+                quantity = int(reorder_level * random.uniform(1.5, 3.0))
+                inventory_status["well_stocked"] += 1
+            elif name in active_shortage_items:
+                # Items that will have shortages
+                shortage_severity = random.random()
+                
+                if shortage_severity < 0.3:  
+                    # Critical shortage (10-30% of reorder level)
+                    quantity = int(reorder_level * random.uniform(0.1, 0.3))
+                    inventory_status["critical"] += 1
+                else:  
+                    # Low inventory (30-80% of reorder level)
+                    quantity = int(reorder_level * random.uniform(0.3, 0.8))
+                    inventory_status["low"] += 1
+            else:
+                # Adequate inventory (90-150% of reorder level)
+                quantity = int(reorder_level * random.uniform(0.9, 1.5))
+                inventory_status["adequate"] += 1
             
-            # Generate last received date
-            last_received = datetime.now() - timedelta(days=random.randint(1, 90))
+            # Generate last received date - more recent for items with low stock
+            if quantity < reorder_level * 0.5:
+                # Recently received a small batch for low stock items
+                last_received = datetime.now() - timedelta(days=random.randint(1, 15))
+            else:
+                # Normal receipt pattern
+                last_received = datetime.now() - timedelta(days=random.randint(1, 90))
             
-            result = session.execute(self.Inventory.insert().values(
-                Name=name,
-                Category=category,
-                Quantity=quantity,
-                ReorderLevel=reorder_level,
-                SupplierID=random.choice(supplier_ids),
-                LeadTime=random.randint(lead_time_range['min'], lead_time_range['max']),
-                Cost=round(random.uniform(cost_range['min'], cost_range['max']), 2),
-                LotNumber=f"LOT-{fake.uuid4()[:8]}",
-                Location=random.choice(locations),
-                LastReceivedDate=last_received
-            ))
+            # Create inventory record
+            inventory_record = {
+                'Name': name,
+                'Category': category,
+                'Quantity': quantity,
+                'ReorderLevel': reorder_level,
+                'SupplierID': supplier_id,
+                'LeadTime': lead_time,
+                'Cost': round(random.uniform(cost_range['min'], cost_range['max']), 2),
+                'LotNumber': f"LOT-{fake.uuid4()[:8]}",
+                'Location': random.choice(locations),
+                'LastReceivedDate': last_received
+            }
+            
+            # Add to inventory data list
+            inventory_data.append(inventory_record)
+        
+        # FINAL SAFETY CHECK: Make sure critical materials have non-zero inventory
+        for record in inventory_data:
+            if record['Name'] in critical_raw_materials and record['Quantity'] <= 0:
+                # Force a minimum quantity (about 5-15% of reorder level)
+                min_quantity = max(1, int(record['ReorderLevel'] * 0.05))
+                max_quantity = max(2, int(record['ReorderLevel'] * 0.15))
+                record['Quantity'] = random.randint(min_quantity, max_quantity)
+                inventory_status["overrides"] += 1
+                logger.warning(f"Override applied to {record['Name']} to prevent zero inventory")
+        
+        # Insert all inventory records
+        for record in inventory_data:
+            result = session.execute(self.Inventory.insert().values(**record))
             inventory_id = result.inserted_primary_key[0]
-            inventory_ids_map[name] = inventory_id
+            inventory_ids_map[record['Name']] = inventory_id
+        
+        # Log inventory status summary
+        logger.info(f"Inventory status distribution:")
+        logger.info(f"  Well stocked items (>150% of reorder): {inventory_status['well_stocked']}")
+        logger.info(f"  Adequate items (90-150% of reorder): {inventory_status['adequate']}")
+        logger.info(f"  Low inventory items (30-90% of reorder): {inventory_status['low']}")
+        logger.info(f"  Critical shortage items (10-30% of reorder): {inventory_status['critical']}")
+        
+        if inventory_status["overrides"] > 0:
+            logger.warning(f"Applied {inventory_status['overrides']} overrides to prevent zero inventory for critical items")
         
         session.commit()
         return inventory_ids_map
-    
+
     def insert_bill_of_materials(self, session, product_ids_map, inventory_ids_map):
         """Insert bill of materials data with realistic hierarchical structure."""
         logger.info("Inserting bill of materials with hierarchical structure")
@@ -1296,8 +1401,8 @@ class MESSimulator:
             )
     
     def create_quality_control(self, session, order_id, status, product_name, 
-                              work_center_name, employee_ids):
-        """Create quality control records for a work order."""
+                          work_center_name, employee_ids):
+        """Create quality control records with more realistic patterns."""
         # Get QC employees
         qc_employees = [
             (name, eid) for (name, role, _), eid in employee_ids.items()
@@ -1318,7 +1423,31 @@ class MESSimulator:
         
         if not work_order:
             return
-            
+        
+        # Product-specific quality factor
+        product_quality_factor = 1.0
+        if "T101" in product_name:  # Newer product has more issues
+            product_quality_factor = 1.3
+        elif "T200" in product_name:
+            product_quality_factor = 1.1
+        elif "C150" in product_name:
+            product_quality_factor = 0.9
+        elif "M300" in product_name:  # Most mature product has fewer issues
+            product_quality_factor = 0.7
+        
+        # Work center quality factor
+        work_center_quality_factor = 1.0
+        if "Battery Production" in work_center_name:
+            work_center_quality_factor = 1.2  # More precision required, more issues
+        elif "Motor Assembly" in work_center_name:
+            work_center_quality_factor = 1.1  # Complex assembly
+        elif "Frame Fabrication" in work_center_name:
+            work_center_quality_factor = 1.05  # Varies with materials
+        elif "Final Assembly" in work_center_name:
+            work_center_quality_factor = 0.9  # Better supervised
+        elif "Quality Control" in work_center_name:
+            work_center_quality_factor = 0.8  # This is the QC station itself
+        
         # Determine defect category based on work center and product
         if "Frame" in work_center_name:
             defect_category = 'frame'
@@ -1335,17 +1464,29 @@ class MESSimulator:
         else:
             defect_category = 'general'
         
-        # QC metrics - better for completed orders than in-progress
-        if status == 'completed':
-            defect_rate = round(random.uniform(0, 0.05), 4)  # 0-5% defect rate
-            rework_rate = round(random.uniform(0, 0.1), 4)   # 0-10% rework rate
-            yield_rate = round(1 - defect_rate - rework_rate, 4)  # Remaining percentage
-        else:
-            defect_rate = round(random.uniform(0, 0.1), 4)   # 0-10% defect rate (higher in progress)
-            rework_rate = round(random.uniform(0, 0.15), 4)  # 0-15% rework rate (higher in progress)
-            yield_rate = round(1 - defect_rate - rework_rate, 4)  # Remaining percentage
+        # Base defect rate - affected by product type and work center
+        base_defect_rate = 0.02 * product_quality_factor * work_center_quality_factor
         
-        # Weighted result
+        # Add occasional quality incident (batch issue)
+        if random.random() < 0.05:  # 5% chance of batch quality issue
+            defect_rate = base_defect_rate * random.uniform(2.0, 5.0)
+            rework_rate = round(random.uniform(0.05, 0.2), 4)  # Higher rework during incidents
+        else:
+            # Normal variation around base rate
+            defect_rate = base_defect_rate * random.uniform(0.5, 1.5)
+            rework_rate = round(random.uniform(0, 0.1), 4)  # 0-10% rework rate
+        
+        # Status affects quality - in progress has higher defect rate as issues not yet resolved
+        if status == 'completed':
+            defect_rate = defect_rate * 0.8  # Completed orders have issues resolved
+        else:
+            defect_rate = defect_rate * 1.2  # In-progress orders still have issues
+        
+        # Round and ensure reasonable bounds
+        defect_rate = round(min(0.5, max(0, defect_rate)), 4)  # Cap at 50% defects
+        yield_rate = round(1 - defect_rate - rework_rate, 4)  # Remaining percentage
+        
+        # Weighted result based on actual rates
         if defect_rate + rework_rate < 0.05:
             result = 'pass'
         elif defect_rate + rework_rate < 0.15:
@@ -1353,10 +1494,15 @@ class MESSimulator:
         else:
             result = 'fail'
         
-        # Get QC comments
+        # Get QC comments - more specific based on category and result
         if defect_category in self.data_pools['qc_comments']:
             comments_pool = self.data_pools['qc_comments'][defect_category]
-            comments = random.choice(comments_pool)
+            if result == 'pass':
+                comments = random.choice(comments_pool) + ". Passed quality inspection."
+            elif result == 'rework':
+                comments = random.choice(comments_pool) + ". Minor issues require rework."
+            else:
+                comments = random.choice(comments_pool) + ". Significant issues detected, failed QC."
         else:
             comments = "Standard quality check performed."
         
@@ -1379,58 +1525,137 @@ class MESSimulator:
         
         # Create defects if there are any
         if defect_rate > 0:
-            # Defect types for this category
-            if defect_category in self.data_pools['qc_comments']:
+            # Defect types for this category - more specific to work centers
+            if defect_category == 'frame':
                 defect_pool = [
                     "Weld Failure", "Misalignment", "Surface Defect", 
-                    "Color Mismatch", "Uneven Coating", "Out of True", 
-                    "Chain Misalignment", "Uneven Braking", "Connection Issue",
-                    "Missing Component", "Cosmetic Damage"
+                    "Frame Bend", "Stress Crack", "Threaded Insert Issue"
+                ]
+            elif defect_category == 'paint':
+                defect_pool = [
+                    "Color Mismatch", "Uneven Coating", "Paint Run", 
+                    "Orange Peel Texture", "Insufficient Coverage", "Clear Coat Issue"
+                ]
+            elif defect_category == 'wheels':
+                defect_pool = [
+                    "Out of True", "Spoke Tension", "Hub Bearing Issue", 
+                    "Rim Damage", "Valve Hole Misalignment", "Uneven Tire Seating"
+                ]
+            elif defect_category == 'electronics':
+                defect_pool = [
+                    "Connection Issue", "Sensor Malfunction", "Battery Cell Variance", 
+                    "Control Board Error", "Motor Coil Problem", "Waterproofing Failure"
+                ]
+            elif defect_category == 'final_assembly':
+                defect_pool = [
+                    "Missing Component", "Fastener Torque", "Cable Routing", 
+                    "Interface Misalignment", "Improper Adjustment", "Incomplete Assembly"
                 ]
             else:
                 defect_pool = [
                     "Cosmetic Damage", "Noise", "Vibration", 
-                    "Documentation Error", "Packaging Damage"
+                    "Documentation Error", "Packaging Damage", "Specification Deviation"
                 ]
             
-            # Number of defect types found
-            num_defect_types = random.randint(1, min(3, len(defect_pool)))
+            # Number of defect types found - correlates with defect rate
+            max_defect_types = min(len(defect_pool), int(defect_rate * 100) + 1)
+            num_defect_types = random.randint(1, max_defect_types)
             
             # Select random defect types
             selected_defects = random.sample(defect_pool, num_defect_types)
             
-            for defect_type in selected_defects:
-                # Defect quantity based on defect rate and order quantity
-                max_defects = max(1, int(work_order.Quantity * defect_rate / num_defect_types))
-                defect_quantity = random.randint(1, max_defects)
+            # Total defect quantity should reflect the defect rate
+            total_defect_qty = max(1, int(work_order.Quantity * defect_rate))
+            defect_quantities = self.distribute_value(total_defect_qty, num_defect_types)
+            
+            for i, defect_type in enumerate(selected_defects):
+                # Defect severity - higher severity for higher defect rate
+                if defect_rate > 0.2:
+                    severity = random.randint(3, 5)  # More severe for high defect rates
+                elif defect_rate > 0.1:
+                    severity = random.randint(2, 4)  # Moderate severity
+                else:
+                    severity = random.randint(1, 3)  # Less severe for low defect rates
+                
+                defect_quantity = defect_quantities[i]
+                
+                # Root causes vary by defect type and work center
+                if "Assembly" in work_center_name:
+                    root_causes = ["Operator Error", "Process Variation", "Missing Step", "Incorrect Procedure"]
+                elif "Fabrication" in work_center_name:
+                    root_causes = ["Material Defect", "Tool Wear", "Machine Calibration", "Process Parameter Drift"]
+                elif "Production" in work_center_name:
+                    root_causes = ["Component Variation", "Design Issue", "Material Specification", "Supplier Quality"]
+                else:
+                    root_causes = ["Material Defect", "Operator Error", "Machine Calibration", "Design Issue", "Process Variation"]
+                
+                # Actions taken dependent on severity and defect type
+                if severity >= 4:
+                    actions = ["Scrapped", "Returned to Supplier", "Extensive Rework Required"]
+                elif severity >= 3:
+                    actions = ["Reworked", "Repaired", "Process Adjusted", "Special Inspection Implemented"]
+                else:
+                    actions = ["Accepted with Deviation", "Minor Repair", "Adjusted Process Parameters"]
                 
                 defect_record = {
                     'CheckID': check_id,
                     'DefectType': defect_type,
-                    'Severity': random.randint(1, 5),  # 1-5 severity scale
+                    'Severity': severity,
                     'Quantity': defect_quantity,
                     'Location': random.choice(["Front", "Rear", "Left", "Right", "Center", "Top", "Bottom"]),
-                    'RootCause': random.choice([
-                        "Material Defect", "Operator Error", "Machine Calibration", 
-                        "Design Issue", "Process Variation", "Tooling Wear"
-                    ]),
-                    'ActionTaken': random.choice([
-                        "Reworked", "Scrapped", "Repaired", "Accepted with Deviation", 
-                        "Returned to Supplier", "Process Adjusted"
-                    ])
+                    'RootCause': random.choice(root_causes),
+                    'ActionTaken': random.choice(actions)
                 }
                 
                 session.execute(self.Defects.insert().values(**defect_record))
+ 
+    def distribute_value(self, total, num_parts):
+        """Distribute a total value into num_parts with some randomness."""
+        if num_parts <= 1:
+            return [total]
+        
+        # Create random points to split the total
+        splits = sorted([random.random() for _ in range(num_parts-1)])
+        
+        # Calculate the portions
+        result = []
+        prev = 0
+        for split in splits:
+            portion = max(1, int((split - prev) * total))
+            result.append(portion)
+            prev = split
+        
+        # Add the final portion
+        final_portion = max(1, total - sum(result))
+        result.append(final_portion)
+        
+        return result
     
     def create_material_consumption(self, session, order_id, product_id, batch_size, 
-                                   status, lot_number, consumption_date, inventory_ids_map):
-        """Create material consumption records for a work order."""
+                           status, lot_number, consumption_date, inventory_ids_map):
+        """Create material consumption records with realistic patterns."""
         # Get the bill of materials for this product
         bom_items = session.execute(
             self.BillOfMaterials.select().where(
                 self.BillOfMaterials.c.ProductID == product_id
             )
         ).fetchall()
+        
+        # Define critical items with special consumption patterns
+        critical_items = ["Steel Bolts", "Rubber Grips", "Aluminum Tubing", "Lithium-ion Cells"]
+        
+        # Add cyclic patterns - some days have higher consumption
+        day_of_week = consumption_date.weekday()
+        weekend_factor = 0.7 if day_of_week >= 5 else 1.0  # Lower consumption on weekends
+        
+        # Monthly pattern - higher at month start and end
+        day_of_month = consumption_date.day
+        month_days = 30  # Approximation
+        monthly_factor = 1.0
+        if day_of_month < 5:
+            monthly_factor = 1.2  # Higher at month start (planning new batches)
+        elif day_of_month > month_days - 5:
+            monthly_factor = 1.15  # Higher at month end (completing orders)
         
         # If no BOM items, create consumption from default items
         if not bom_items:
@@ -1442,10 +1667,24 @@ class MESSimulator:
                     continue
                     
                 item_id = inventory_ids_map[item_name]
+                
+                # Base planned quantity
                 planned_qty = random.randint(1, 10) * batch_size / 100
                 
-                # Actual quantity varies from plan
-                variance = random.uniform(-0.05, 0.1)  # -5% to +10% variance
+                # Apply consumption patterns for critical items
+                if item_name in critical_items:
+                    # Batch consumption patterns (occasionally larger batches)
+                    if random.random() < 0.15:  # 15% chance of batch consumption
+                        planned_qty *= random.uniform(1.5, 2.5)
+                    
+                    # Apply cyclic factors
+                    planned_qty *= weekend_factor * monthly_factor
+                    
+                    # More variability for critical items
+                    variance = random.uniform(-0.1, 0.2)  # -10% to +20% variance
+                else:
+                    variance = random.uniform(-0.05, 0.1)  # -5% to +10% variance
+                
                 actual_qty = planned_qty * (1 + variance)
                 
                 # Only completed orders have full actual consumption
@@ -1453,9 +1692,11 @@ class MESSimulator:
                     actual_value = actual_qty
                     variance_percent = variance * 100
                 else:
-                    # In-progress orders have partial consumption
+                    # In-progress orders have partial consumption with more variance
                     progress = random.uniform(0.1, 0.9)
-                    actual_value = planned_qty * progress
+                    progress_variance = random.uniform(-0.1, 0.1)  # More variability in partial consumption
+                    actual_value = planned_qty * (progress + progress_variance)
+                    actual_value = max(0, actual_value)  # Ensure non-negative
                     variance_percent = (actual_value / planned_qty - 1) * 100
                 
                 consumption_record = {
@@ -1480,8 +1721,16 @@ class MESSimulator:
                     ).fetchone()
                     
                     if inventory_item:
-                        # Calculate new quantity, ensuring it doesn't go below zero
-                        new_qty = max(0, inventory_item.Quantity - int(actual_value))
+                        if item_name in critical_items:
+                            # For critical items, ensure we never go below a minimum level
+                            # Set minimum to 5% of reorder level
+                            min_reserve = max(1, int(inventory_item.ReorderLevel * 0.05))
+                            available_qty = max(0, inventory_item.Quantity - min_reserve)
+                            consumption = min(int(actual_value), available_qty)
+                            new_qty = inventory_item.Quantity - consumption
+                        else:
+                            # For non-critical items, allow reduction to zero
+                            new_qty = max(0, inventory_item.Quantity - int(actual_value))
                         
                         session.execute(
                             self.Inventory.update().where(
@@ -1490,12 +1739,24 @@ class MESSimulator:
                                 Quantity=new_qty
                             )
                         )
-            
             return
         
         # Process actual BOM items
         for bom_item in bom_items:
             component_id = bom_item.ComponentID
+            
+            # Get component info for pattern detection
+            component = session.execute(
+                self.Inventory.select().where(
+                    self.Inventory.c.ItemID == component_id
+                )
+            ).fetchone()
+            
+            if not component:
+                continue
+                
+            component_name = component.Name
+            is_critical = component_name in critical_items
             
             # Calculate planned quantity
             planned_qty = bom_item.Quantity * batch_size
@@ -1503,8 +1764,21 @@ class MESSimulator:
             # Add scrap factor to planned quantity
             planned_qty = planned_qty * (1 + bom_item.ScrapFactor)
             
-            # Actual quantity varies from plan
-            variance = random.uniform(-0.05, 0.1)  # -5% to +10% variance
+            # Apply consumption patterns for critical items
+            if is_critical:
+                # Batch consumption patterns
+                if random.random() < 0.15:  # 15% chance of batch consumption
+                    planned_qty *= random.uniform(1.3, 2.0)  # 30-100% more consumption in batches
+                
+                # Apply cyclic factors
+                planned_qty *= weekend_factor * monthly_factor
+                
+                # More variability for critical items
+                variance = random.uniform(-0.1, 0.2)  # -10% to +20% variance
+            else:
+                # Regular variability for non-critical items
+                variance = random.uniform(-0.05, 0.1)  # -5% to +10% variance
+            
             actual_qty = planned_qty * (1 + variance)
             
             # Only completed orders have full actual consumption
@@ -1514,7 +1788,10 @@ class MESSimulator:
             else:
                 # In-progress orders have partial consumption
                 progress = random.uniform(0.1, 0.9)
-                actual_value = planned_qty * progress
+                # Add more variance to in-progress consumption
+                progress_variance = random.uniform(-0.1, 0.1)
+                actual_value = planned_qty * (progress + progress_variance)
+                actual_value = max(0, actual_value)  # Ensure non-negative
                 variance_percent = (actual_value / planned_qty - 1) * 100
             
             consumption_record = {
@@ -1539,8 +1816,16 @@ class MESSimulator:
                 ).fetchone()
                 
                 if inventory_item:
-                    # Calculate new quantity, ensuring it doesn't go below zero
-                    new_qty = max(0, inventory_item.Quantity - int(actual_value))
+                    if is_critical:
+                        # For critical items, ensure we never go below a minimum level
+                        # Set minimum to 5% of reorder level
+                        min_reserve = max(1, int(inventory_item.ReorderLevel * 0.05))
+                        available_qty = max(0, inventory_item.Quantity - min_reserve)
+                        consumption = min(int(actual_value), available_qty)
+                        new_qty = inventory_item.Quantity - consumption
+                    else:
+                        # For non-critical items, allow reduction to zero
+                        new_qty = max(0, inventory_item.Quantity - int(actual_value))
                     
                     session.execute(
                         self.Inventory.update().where(
@@ -1658,62 +1943,121 @@ class MESSimulator:
         session.execute(self.Downtimes.insert().values(**downtime_record))
     
     def insert_oee_metrics(self, session, machine_ids):
-        """Insert OEE (Overall Equipment Effectiveness) metrics."""
-        logger.info("Inserting OEE metrics")
+        """Insert OEE metrics with realistic patterns related to maintenance cycles."""
+        logger.info("Inserting OEE metrics with maintenance correlation")
         
         # Time period for metrics
         end_date = datetime.now()
         start_date = end_date - timedelta(days=30)
         
+        # Machine type baseline metrics - different machines have different baseline performance
+        machine_baselines = {
+            "Frame Welding": {"availability": 0.85, "performance": 0.80, "quality": 0.95},
+            "Wheel Assembly": {"availability": 0.88, "performance": 0.85, "quality": 0.97},
+            "Paint Booth": {"availability": 0.82, "performance": 0.78, "quality": 0.94},
+            "Battery Assembly": {"availability": 0.86, "performance": 0.82, "quality": 0.98},
+            "Motor Assembly": {"availability": 0.87, "performance": 0.83, "quality": 0.96},
+            "Final Assembly": {"availability": 0.90, "performance": 0.85, "quality": 0.98},
+            "Quality Control": {"availability": 0.92, "performance": 0.88, "quality": 0.99},
+            "Packaging": {"availability": 0.91, "performance": 0.86, "quality": 0.97}
+        }
+        
         # For each machine, create daily OEE metrics
-        for machine_id in machine_ids.values():
+        for (machine_name, machine_type, _), machine_id in machine_ids.items():
             machine = session.execute(self.Machines.select().where(
                 self.Machines.c.MachineID == machine_id
             )).fetchone()
             
             if not machine:
                 continue
-                
+            
+            # Get the baseline metrics for this machine type
+            baseline = machine_baselines.get(machine_type, {
+                "availability": 0.88, "performance": 0.82, "quality": 0.96
+            })
+            
+            # Get maintenance information
+            maintenance_frequency_hours = machine.MaintenanceFrequency
+            last_maintenance_date = machine.LastMaintenanceDate
+            installation_date = machine.InstallationDate
+            
+            # Machine age factor - older machines have lower baseline
+            days_since_installation = (datetime.now() - installation_date).days if installation_date else 365
+            years_old = days_since_installation / 365
+            age_factor = max(0.85, 1.0 - (years_old * 0.02))  # 2% degradation per year, minimum 85%
+            
+            # Different degradation rates for different metrics
+            availability_age_impact = age_factor * 0.9 + 0.1  # Less impacted by age
+            performance_age_impact = age_factor * 0.8 + 0.2  # More impacted by age
+            quality_age_impact = age_factor * 0.95 + 0.05  # Least impacted by age
+            
             current_date = start_date
             
             while current_date <= end_date:
-                # Planned production time (in minutes)
-                planned_time = 480  # 8 hours by default
+                # Calculate days since last maintenance - ensure it's not negative
+                days_since_maintenance = max(0, (current_date - last_maintenance_date).days if last_maintenance_date else 30)
                 
-                # Machine-specific base metrics
-                if machine.Type in ["Frame Welding", "Battery Assembly"]:
-                    base_availability = 0.85
-                    base_performance = 0.8
-                    base_quality = 0.95
-                elif machine.Type in ["Final Assembly", "Quality Control"]:
-                    base_availability = 0.9
-                    base_performance = 0.85
-                    base_quality = 0.98
-                else:
-                    base_availability = 0.88
-                    base_performance = 0.82
-                    base_quality = 0.96
+                # Convert to hours for maintenance cycle calculation
+                hours_since_maintenance = days_since_maintenance * 24
                 
-                # Day-specific variation (weekends might be worse)
+                # Calculate where we are in the maintenance cycle (0 to 1)
+                maintenance_cycle_position = max(0.0, min(1.0, hours_since_maintenance / maintenance_frequency_hours))
+                
+                # Performance degradation curve - different curves for different metrics
+                # Availability drops more quickly than other metrics as maintenance approaches
+                availability_maintenance_factor = max(0.8, 1.0 - (0.2 * (maintenance_cycle_position ** 1.5)))
+                performance_maintenance_factor = max(0.85, 1.0 - (0.15 * (maintenance_cycle_position ** 1.2)))
+                quality_maintenance_factor = max(0.9, 1.0 - (0.1 * maintenance_cycle_position))
+                
+                # Day-specific variation
                 weekday = current_date.weekday()
-                if weekday >= 5:  # Weekend
-                    day_factor = 0.95  # 5% reduction
-                else:
-                    day_factor = 1.0
+                is_weekend = weekday >= 5
                 
-                # Random daily variation
-                daily_variation = random.uniform(0.95, 1.05)
+                # Weekend factor - slightly lower efficiency on weekends
+                weekend_factor = 0.95 if is_weekend else 1.0
                 
-                # Consider machine efficiency factor
-                machine_factor = machine.EfficiencyFactor
+                # Monthly pattern - slight drop at month start (adjusting to new production plans)
+                day_of_month = current_date.day
+                month_days = 30  # Approximation
+                monthly_factor = 0.98 if day_of_month < 3 else 1.0
                 
-                # Calculate metrics with variation
-                availability = min(1.0, base_availability * day_factor * daily_variation * machine_factor)
-                performance = min(1.0, base_performance * day_factor * daily_variation * machine_factor)
-                quality = min(1.0, base_quality * day_factor * daily_variation)
+                # Random daily variation with small inertia (similar to previous days)
+                daily_variation = random.uniform(0.97, 1.03)
+                
+                # Calculate metrics with all factors applied
+                base_availability = baseline["availability"]
+                base_performance = baseline["performance"]
+                base_quality = baseline["quality"]
+                
+                # Apply all factors to calculate final metrics
+                availability = min(0.998, base_availability * 
+                                availability_maintenance_factor * 
+                                availability_age_impact * 
+                                weekend_factor * 
+                                monthly_factor * 
+                                daily_variation)
+                
+                performance = min(0.998, base_performance * 
+                                performance_maintenance_factor * 
+                                performance_age_impact * 
+                                weekend_factor * 
+                                monthly_factor * 
+                                daily_variation)
+                
+                quality = min(0.999, base_quality * 
+                            quality_maintenance_factor * 
+                            quality_age_impact * 
+                            weekend_factor * 
+                            (daily_variation * 0.3 + 0.7))  # Quality less affected by daily variation
                 
                 # Calculate OEE
                 oee = availability * performance * quality
+                
+                # Planned production time - different for weekends
+                if is_weekend:
+                    planned_time = 240  # 4 hours on weekends
+                else:
+                    planned_time = 480  # 8 hours on weekdays
                 
                 # Calculate derived values
                 downtime = int(planned_time * (1 - availability))
@@ -1737,33 +2081,355 @@ class MESSimulator:
                 current_date += timedelta(days=1)
         
         session.commit()
+    
+    def create_downtime_record(self, session, machine_id, order_id, status, 
+                          start_time, end_time, employee_ids):
+        """Create a more realistic downtime record with patterns related to maintenance."""
+        # Get machine info to check maintenance history
+        machine = session.execute(
+            self.Machines.select().where(
+                self.Machines.c.MachineID == machine_id
+            )
+        ).fetchone()
+        
+        if not machine:
+            return
+        
+        # Calculate days since last maintenance
+        days_since_maintenance = (datetime.now() - machine.LastMaintenanceDate).days if machine.LastMaintenanceDate else 30
+        
+        # Machine type-specific breakdown probability adjustment
+        breakdown_factor = 1.0
+        if machine.Type == "Frame Welding":
+            breakdown_factor = 1.2  # Old technology, more issues
+        elif machine.Type == "Battery Assembly":
+            breakdown_factor = 1.1  # Precision work, some issues
+        elif machine.Type == "Quality Control":
+            breakdown_factor = 0.7  # Newer technology, fewer issues
+        elif machine.Type == "Motor Assembly":
+            breakdown_factor = 1.05  # Complex assembly, some issues
+        elif machine.Type == "Packaging":
+            breakdown_factor = 0.8  # Simple operation, fewer issues
+        
+        # Base probability of unplanned downtime increases with days since maintenance
+        # Early days (0-15): very low probability
+        # Mid-term (16-30): moderate increase
+        # Late (31+): higher probability
+        if days_since_maintenance < 15:
+            unplanned_probability = 0.05 * breakdown_factor
+        elif days_since_maintenance < 30:
+            unplanned_probability = 0.15 * breakdown_factor
+        else:
+            unplanned_probability = min(0.4, 0.15 + (days_since_maintenance - 30) * 0.01) * breakdown_factor
+        
+        # Determine if planned or unplanned based on this curve
+        category = random.choices(
+            ['planned', 'unplanned'], 
+            weights=[max(0.1, 1 - unplanned_probability), unplanned_probability], 
+            k=1
+        )[0]
+        
+        # Get downtime reasons for this category
+        reasons = self.data_pools['downtime_reasons'][category]
+        
+        # Weight reasons based on machine type and maintenance status
+        if category == 'unplanned':
+            if days_since_maintenance > 30:
+                # More breakdowns for machines needing maintenance
+                weighted_reasons = {
+                    "Equipment Failure": 50,
+                    "Power Outage": 5,
+                    "Material Shortage": 10,
+                    "Operator Absence": 5,
+                    "Quality Issue": 10,
+                    "Tool Breakage": 15,
+                    "Software Error": 5,
+                    "Safety Incident": 5,
+                    "Unexpected Maintenance": 20
+                }
+            else:
+                # More balanced for well-maintained machines
+                weighted_reasons = {
+                    "Equipment Failure": 20,
+                    "Power Outage": 10,
+                    "Material Shortage": 20,
+                    "Operator Absence": 15,
+                    "Quality Issue": 15,
+                    "Tool Breakage": 10,
+                    "Software Error": 10,
+                    "Safety Incident": 5,
+                    "Unexpected Maintenance": 10
+                }
+            
+            # Filter to only include valid reasons from the data pool
+            valid_reasons = [r for r in reasons if r in weighted_reasons]
+            valid_weights = [weighted_reasons.get(r, 10) for r in valid_reasons]
+            
+            if valid_reasons:
+                reason = random.choices(valid_reasons, weights=valid_weights, k=1)[0]
+            else:
+                reason = random.choice(reasons)
+        else:
+            # For planned downtime, use existing random selection
+            reason = random.choice(reasons)
+        
+        # Duration depends on reason and machine type
+        if reason == "Scheduled Maintenance":
+            duration = random.randint(60, 240)  # 1-4 hours in minutes
+        elif reason == "Equipment Failure":
+            # More serious failures on older machines
+            if days_since_maintenance > 30:
+                duration = random.randint(60, 240)  # 1-4 hours for older machines
+            else:
+                duration = random.randint(30, 120)  # 30min-2hrs for newer machines
+        elif reason in ["Setup/Changeover", "Cleaning"]:
+            duration = random.randint(15, 60)  # 15-60 minutes
+        else:
+            duration = random.randint(10, 90)  # 10-90 minutes
+        
+        # Don't allow downtime to exceed the work order duration
+        if status == 'completed' and start_time and end_time:
+            max_duration = (end_time - start_time).total_seconds() / 60 * 0.8  # 80% of order time
+            duration = min(duration, int(max_duration))
+        
+        # Calculate start/end times
+        if status == 'completed' and start_time and end_time:
+            # For completed orders, place downtime within the order timeframe
+            order_duration_minutes = (end_time - start_time).total_seconds() / 60
+            start_offset = random.uniform(0.1, 0.7) * order_duration_minutes  # Place in first 70%
+            downtime_start = start_time + timedelta(minutes=start_offset)
+            downtime_end = downtime_start + timedelta(minutes=duration)
+            
+            # Ensure downtime ends before order end
+            if downtime_end > end_time:
+                downtime_end = end_time
+                duration = int((downtime_end - downtime_start).total_seconds() / 60)
+        else:
+            # For in-progress orders, place downtime recently
+            now = datetime.now()
+            downtime_start = now - timedelta(hours=random.uniform(1, 8))
+            downtime_end = downtime_start + timedelta(minutes=duration)
+            
+            # If downtime would end in the future, it's still ongoing
+            if downtime_end > now:
+                downtime_end = None
+                duration = None
+        
+        # Get a reporter (technician for most issues, operator for some)
+        if category == 'planned' or reason in ["Equipment Failure", "Tool Breakage", "Unexpected Maintenance"]:
+            role = 'Technician'
+        else:
+            role = random.choices(['Operator', 'Technician'], weights=[70, 30], k=1)[0]
+        
+        reporters = [
+            (name, eid) for (name, r, _), eid in employee_ids.items()
+            if r == role
+        ]
+        
+        if not reporters:
+            reporters = list(employee_ids.items())
+        
+        _, reporter_id = random.choice(reporters)
+        
+        # Generate more specific descriptions based on reason
+        descriptions = {
+            "Equipment Failure": [
+                f"Machine {machine.Type} motor overheated and stopped functioning",
+                f"Control system failure on {machine.Name}",
+                f"Mechanical jam in {machine.Type} unit",
+                f"Bearing failure in main drive",
+                f"Pneumatic system pressure loss"
+            ],
+            "Power Outage": [
+                "Factory-wide power outage",
+                "Electrical surge damaged circuit boards",
+                "Backup generator failed to start",
+                "Power fluctuation caused system reset",
+                "Circuit breaker trip in work center"
+            ],
+            "Scheduled Maintenance": [
+                f"Routine maintenance check for {machine.Type}",
+                "Annual certification and inspection",
+                "Software update and calibration",
+                "Preventative maintenance service",
+                "Filter replacement and lubrication"
+            ],
+            "Setup/Changeover": [
+                "Product changeover from previous batch",
+                "Tool replacement and alignment",
+                "Setup for new product specifications",
+                "Jig reconfiguration for different model",
+                "Program change for new product variant"
+            ],
+            "Material Shortage": [
+                "Awaiting delivery of critical components",
+                "Inventory depletion of necessary parts",
+                "Quality hold on incoming materials",
+                "Incorrect materials delivered",
+                "Supply chain delay impact"
+            ],
+            "Quality Issue": [
+                "Investigating abnormal defect rate",
+                "Material specification deviation detected",
+                "Product dimensional check failure",
+                "Customer complaint investigation",
+                "Calibration drift affecting quality"
+            ]
+        }
+        
+        if reason in descriptions:
+            description = random.choice(descriptions[reason])
+        else:
+            description = f"{reason} on {machine.Name} in {machine.Type} operation"
+        
+        downtime_record = {
+            'MachineID': machine_id,
+            'OrderID': order_id,
+            'StartTime': downtime_start,
+            'EndTime': downtime_end,
+            'Duration': duration,
+            'Reason': reason,
+            'Category': category,
+            'Description': description,
+            'ReportedBy': reporter_id
+        }
+        
+        session.execute(self.Downtimes.insert().values(**downtime_record))
+    
 
 def main():
-    """Main function to run the MES simulator."""
+    """Main function to create / update the MES simulator"""
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Generate synthetic MES data')
-    parser.add_argument('--config', default='data_generatot/data_pools.json', help='Path to configuration JSON file')
-    parser.add_argument('--db', default='mes.db', help='Path to SQLite database file')
-    parser.add_argument('--seed', type=int, help='Random seed for reproducibility')
-    parser.add_argument('--lookback', type=int, default=90, help='Number of days to look back for historical data')
-    parser.add_argument('--lookahead', type=int, default=90, help='Number of days to look ahead for future data')
+    parser = argparse.ArgumentParser(description='Generate or refresh synthetic MES data')
+    parser.add_argument('--config', default='app_factory/data_generator/data_pools.json', 
+                        help='Path to configuration JSON file')
+    parser.add_argument('--db', default='mes.db', 
+                        help='Path to SQLite database file')
+    parser.add_argument('--seed', type=int, 
+                        help='Random seed for reproducibility. Omit for true randomness each run.')
+    parser.add_argument('--lookback', type=int, default=90,
+                        help='Number of days to look back for historical data')
+    parser.add_argument('--lookahead', type=int, default=14,
+                        help='Number of days to look ahead for future data')
+    parser.add_argument('--mode', choices=['create', 'refresh', 'auto'], default='auto',
+                        help='Operation mode: create=new database, refresh=update existing, auto=detect (default)')
     args = parser.parse_args()
     
+    # Generate a timestamp-based seed if none provided
+    if args.seed is None:
+        # Use current timestamp for seed to ensure different data each run
+        seed = int(datetime.now().timestamp())
+        logger.info(f"No seed provided, using timestamp-based seed: {seed}")
+    else:
+        seed = args.seed
+    
     try:
-        # Initialize and run simulator
-        simulator = MESSimulator(
-            args.config, 
-            args.db, 
-            args.seed,
-            lookback_days=args.lookback,
-            lookahead_days=args.lookahead
-        )
-        simulator.create_database()
-        simulator.insert_data()
-        logger.info(f"MES simulation database created successfully at {args.db}")
+        # Check if database already exists
+        db_exists = os.path.exists(args.db)
+        
+        # Determine mode based on arguments and database existence
+        if args.mode == 'auto':
+            # Auto-detect mode based on whether the database exists
+            mode = 'refresh' if db_exists else 'create'
+            logger.info(f"Auto-detected mode: {mode}")
+        else:
+            mode = args.mode
+        
+        # Handle create mode
+        if mode == 'create':
+            if db_exists:
+                logger.info(f"Database {args.db} exists but create mode specified. Removing existing database.")
+                os.remove(args.db)
+            
+            logger.info(f"Creating new database at {args.db}")
+            simulator = MESSimulator(
+                args.config, 
+                args.db, 
+                seed=seed,
+                lookback_days=args.lookback,
+                lookahead_days=args.lookahead
+            )
+            simulator.create_database()
+            simulator.insert_data()
+            logger.info(f"MES simulation database created successfully at {args.db}")
+            
+        # Handle refresh mode
+        elif mode == 'refresh':
+            if not db_exists:
+                logger.error(f"Cannot refresh: Database {args.db} does not exist. Use 'create' mode instead.")
+                sys.exit(1)
+            
+            logger.info(f"Refreshing data in existing database {args.db}")
+            
+            # Initialize the simulator without creating tables
+            simulator = MESSimulator(
+                args.config, 
+                args.db, 
+                seed=seed,
+                lookback_days=args.lookback,
+                lookahead_days=args.lookahead
+            )
+            
+            # Truncate all tables while preserving schema
+            truncate_all_tables(args.db)
+            
+            # Insert fresh data
+            simulator.insert_data()
+            logger.info(f"Data refreshed successfully in existing database {args.db}")
+            logger.info(f"Generated {args.lookback} days of historical data and {args.lookahead} days of future data")
+        
     except Exception as e:
-        logger.error(f"Error creating MES simulation: {e}")
+        logger.error(f"Error in MES data generation: {e}")
         raise
+
+
+def truncate_all_tables(db_path):
+    """Delete all data from tables but preserve schema."""
+    logger.info(f"Truncating all tables in {db_path}")
+    
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Get all tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        
+        # Disable foreign key checks temporarily
+        cursor.execute("PRAGMA foreign_keys = OFF;")
+        
+        # Start a transaction
+        conn.execute("BEGIN TRANSACTION;")
+        
+        # Truncate each table
+        for table in tables:
+            table_name = table[0]
+            if table_name != "sqlite_sequence":  # Skip internal SQLite tables
+                logger.info(f"Truncating table: {table_name}")
+                cursor.execute(f"DELETE FROM {table_name};")
+        
+        # Reset autoincrement counters if sqlite_sequence exists
+        try:
+            cursor.execute("DELETE FROM sqlite_sequence;")
+        except sqlite3.OperationalError as e:
+            if "no such table: sqlite_sequence" in str(e):
+                logger.info("No sqlite_sequence table found (normal if no autoincrement columns)")
+            else:
+                raise
+        
+        # Commit transaction
+        conn.commit()
+        
+        # Re-enable foreign key checks
+        cursor.execute("PRAGMA foreign_keys = ON;")
+        
+        conn.close()
+        logger.info("All tables truncated successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Error truncating tables: {e}")
+        return False
+
 
 if __name__ == '__main__':
     main()

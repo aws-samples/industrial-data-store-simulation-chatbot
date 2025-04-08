@@ -66,24 +66,40 @@ This application is built on a synthetic MES database for an e-bike manufacturin
 4. **Generate the MES Database**
 
    ```bash
-   # Create tables and simulation data
-   python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 90
+   # Create tables and simulation data (auto-detects if database exists)
+   python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 14
    ```
 
-   This will create the database file `mes.db` in the project root directory.
+   This will create the database file `mes.db` in the project root directory if it doesn't exist, or refresh the data if it does.
 
-   For additional options:
+   **Operation Modes**
+
+   The script supports different operation modes:
 
    ```bash
-   # Get help on configuration options
+   # Always create a new database (deletes existing if present)
+   python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --mode create
+
+   # Refresh an existing database (errors if database doesn't exist)
+   python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --mode refresh
+
+   # Auto-detect what to do based on whether the database exists (default)
+   python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --mode auto
+   ```
+
+   **Additional Options**
+
+   ```bash
+   # Get help on all configuration options
    python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --help
    ```
 
-   If you have a need to refresh data without recreating the database, you can simply run:
+   Common options include:
 
-   ```bash
-   python3 app_factory/data_generator/refresh-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 90
-   ```
+   - `--lookback <days>`: Number of days of historical data to generate (default: 90)
+   - `--lookahead <days>`: Number of days of future data to generate (default: 14)
+   - `--seed <number>`: Random seed for reproducibility (omit for random data each run)
+   - `--db <path>`: Custom database file path (default: mes.db)
 
 5. **Run the Application**
 
