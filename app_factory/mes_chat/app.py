@@ -15,7 +15,7 @@ import plotly.express as px
 
 # Import shared modules
 from shared.database import DatabaseManager, get_tool_config
-from shared.bedrock_utils import get_bedrock_client, get_available_bedrock_models
+from shared.bedrock_utils import get_bedrock_client, get_tool_use_converse_models
 
 # Configuration
 load_dotenv()
@@ -404,7 +404,7 @@ def run_mes_chat():
         # Get available bedrock models with tool use capability
         try:
             # Get all available models that support tool use
-            available_models = get_available_bedrock_models()
+            available_models = get_tool_use_converse_models()
             
             # Format models for display in selectbox
             model_options = []
@@ -448,7 +448,7 @@ def run_mes_chat():
                 options=model_options,
                 index=default_index,
                 key='model_display',
-                help="Select from models that support tool use and are enabled for your account"
+                help="Select from models that support tool use and the Converse API"
             )
             
             # Get the actual model ID from the selected option
@@ -462,6 +462,7 @@ def run_mes_chat():
                 'Select AI Model:',
                 ["anthropic.claude-3-haiku-20240307-v1:0", 
                 "anthropic.claude-3-sonnet-20240229-v1:0",
+                "anthropic.claude-3-5-sonnet-20240620-v1:0",
                 "us.amazon.nova-micro-v1:0", 
                 "us.amazon.nova-lite-v1:0", 
                 "us.amazon.nova-pro-v1:0"],

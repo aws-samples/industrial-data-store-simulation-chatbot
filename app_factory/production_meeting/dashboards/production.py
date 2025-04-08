@@ -7,7 +7,6 @@ import pandas as pd
 import plotly.express as px
 
 from shared.database import DatabaseManager
-from production_meeting.utils.interactive_explanations import metric_with_explanation
 
 # Initialize database manager
 db_manager = DatabaseManager()
