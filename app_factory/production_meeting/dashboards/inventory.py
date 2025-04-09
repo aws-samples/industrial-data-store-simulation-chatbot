@@ -21,6 +21,41 @@ def inventory_dashboard():
     # Get inventory alerts
     inventory_alerts = db_manager.get_inventory_alerts()
     
+    # Get all inventory items for the complete inventory view
+    all_inventory_query = """
+    SELECT 
+        i.ItemID,
+        i.Name as ItemName,
+        i.Category as Category,
+        i.Quantity as CurrentQuantity,
+        i.ReorderLevel,
+        i.LeadTime as LeadTimeInDays,
+        s.Name as SupplierName,
+        CASE 
+            WHEN i.Quantity < i.ReorderLevel THEN i.ReorderLevel - i.Quantity
+            ELSE 0
+        END as ShortageAmount,
+        CASE 
+            WHEN i.Quantity < i.ReorderLevel * 0.5 THEN 'Critical'
+            WHEN i.Quantity < i.ReorderLevel THEN 'Low'
+            WHEN i.Quantity < i.ReorderLevel * 1.5 THEN 'Adequate'
+            ELSE 'Well-Stocked'
+        END as StockStatus
+    FROM 
+        Inventory i
+    LEFT JOIN 
+        Suppliers s ON i.SupplierID = s.SupplierID
+    ORDER BY 
+        CASE 
+            WHEN i.Quantity < i.ReorderLevel THEN 1
+            ELSE 2
+        END,
+        ShortageAmount DESC
+    """
+    
+    all_inventory_result = db_manager.execute_query(all_inventory_query)
+    all_inventory = pd.DataFrame(all_inventory_result["rows"]) if all_inventory_result["success"] else pd.DataFrame()
+    
     if not inventory_alerts.empty:
         # Summary metrics
         total_items_below = len(inventory_alerts)
@@ -34,39 +69,6 @@ def inventory_dashboard():
         # Calculate average lead time for items below reorder
         avg_lead_time = inventory_alerts['LeadTimeInDays'].mean()
         metrics_cols[2].metric("Avg Lead Time", f"{avg_lead_time:.1f} days")
-        
-        # Display inventory alerts by category - SIMPLIFIED
-        st.subheader("Inventory Alerts by Category")
-        
-        # Group by category to get total shortage amount per category
-        category_alerts = inventory_alerts.groupby('Category').agg({
-            'ShortageAmount': 'sum',
-            'ItemName': 'count'
-        }).reset_index()
-        
-        category_alerts.rename(columns={'ShortageAmount': 'TotalShortage', 'ItemName': 'ItemCount'}, inplace=True)
-        
-        # Simple bar chart showing total shortage amount per category
-        fig = px.bar(
-            category_alerts,
-            x='Category',
-            y='TotalShortage',
-            title='Total Shortage Amount by Category',
-            labels={
-                'TotalShortage': 'Total Shortage Amount',
-                'Category': 'Category'
-            },
-            color='Category',
-            hover_data=['ItemCount']  # Show item count on hover
-        )
-        
-        # Force y-axis to use integers only
-        fig.update_yaxes(dtick=50, tick0=0)
-        
-        # Add data labels on top of bars
-        fig.update_traces(texttemplate='%{y}', textposition='outside')
-        
-        st.plotly_chart(fig, use_container_width=True)
         
         # Display critical shortage items
         st.subheader("Critical Shortage Items")
@@ -110,9 +112,31 @@ def inventory_dashboard():
         
         st.plotly_chart(fig, use_container_width=True)
         
-        # Detailed inventory alerts
-        with st.expander("All Inventory Alerts", expanded=False):
-            st.dataframe(inventory_alerts)
+        # Changed from "All Inventory Alerts" to "All Inventory Levels"
+        with st.expander("All Inventory Levels", expanded=False):
+            # Use the complete inventory data instead of just alerts
+            if not all_inventory.empty:
+                # Add color coding based on stock status
+                def highlight_status(val):
+                    if val == 'Critical':
+                        return 'background-color: #ffcccc'
+                    elif val == 'Low':
+                        return 'background-color: #ffffcc'
+                    elif val == 'Adequate':
+                        return 'background-color: #ccffcc'
+                    else:  # Well-Stocked
+                        return 'background-color: #ccffcc'
+                
+                # Apply the styling and display the dataframe
+                styled_inventory = all_inventory.style.applymap(
+                    lambda _: '', subset=pd.IndexSlice[:, all_inventory.columns != 'StockStatus']
+                ).applymap(
+                    highlight_status, subset=['StockStatus']
+                )
+                
+                st.dataframe(all_inventory)
+            else:
+                st.info("No inventory data available")
             
         st.subheader("Days of Supply Analysis")
         
