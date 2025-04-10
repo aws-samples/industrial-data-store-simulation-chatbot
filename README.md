@@ -52,7 +52,11 @@ Features include:
 
 ### System Architecture
 
-![MES System Architecture](assets/MES-chatbot-sys-architecture.png)
+This architecture enables natural language queries against manufacturing databases using LLMs. The system follows a schema-first approach where the LLM first learns the database structure before generating SQL queries. When users ask questions in plain English, the application bridges the gap between natural language and structured data by having the LLM generate appropriate SQL, execute it against the MES database, and then transform the results into insightful, business-relevant responses with visualizations. The pattern includes error handling with query reformulation when needed, ensuring robust performance even with complex manufacturing questions.
+
+This is the Sequence Diagram of the chatbot:
+
+![MES System Architecture](assets/mes-chatbot-architecture-sequence-diagram.png)
 
 ## Installation
 
