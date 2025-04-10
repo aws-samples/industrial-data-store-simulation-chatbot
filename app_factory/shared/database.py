@@ -1,12 +1,10 @@
 """
 Shared database utilities for accessing the MES database
-Refactored from the original mes_tools.py
 """
 
 import logging
 import sqlite3
 import pandas as pd
-import json
 from datetime import datetime, timedelta
 import time
 import os
@@ -401,11 +399,6 @@ class DatabaseManager:
             logger.error(f"Error getting work order status: {result['error']}")
             return pd.DataFrame()
 
-# For backwards compatibility with original mes_tools.py
-class DatabaseQueryTool(DatabaseManager):
-    """Legacy class for compatibility with the original MES chat application"""
-    pass
-
 # Bedrock tool configuration for the chat interface
 def get_tool_config():
     """Get the tool configuration for the Bedrock converse API"""
@@ -434,7 +427,7 @@ def get_tool_config():
                             "properties": {
                                 "sql_query": {
                                     "type": "string",
-                                    "description": "The SQL query to execute against the MES database. Write clean, efficient SQL that joins necessary tables to answer the user's question in one query when possible."
+                                    "description": "The SQL query to execute against the MES database. Write clean, efficient SQL that joins necessary tables to answer the user's question in one query when possible. The queries must be SQLite compatible"
                                 }
                             },
                             "required": [

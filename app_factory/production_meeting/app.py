@@ -6,6 +6,10 @@ import streamlit as st
 from datetime import datetime, timedelta
 
 # Import shared modules
+import sys
+import os
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(parent_dir)
 from shared.database import DatabaseManager
 
 # Import production meeting modules
