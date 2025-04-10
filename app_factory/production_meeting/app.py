@@ -3,12 +3,7 @@ Production Meeting Dashboard - Daily lean meeting tool with enhanced AI analytic
 """
 
 import streamlit as st
-import pandas as pd
-import numpy as np
-import json
-import os
 from datetime import datetime, timedelta
-from pathlib import Path
 
 # Import shared modules
 from shared.database import DatabaseManager

@@ -2,7 +2,7 @@
   "categories": {
     "🏭 Production": [
       "What's our current production schedule for the next week?",
-      "Show me all completed work orders for eBike T101",
+      "How many orders have we completed for eBike T101?",
       "Which work center has the highest production volume?",
       "What's our on-time completion rate for completed orders?",
       "What's the current status distribution of all work orders?",

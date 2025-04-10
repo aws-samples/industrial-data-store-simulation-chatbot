@@ -38,9 +38,8 @@ def get_model_features():
     Returns:
         Dictionary mapping model IDs to dictionaries with feature information
     """
-    # Lists models that support both Converse API and tool use
+    # Lists models that support converse, system prompt, and tool use
     # Based on: https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html
-    # and: https://aws.amazon.com/about-aws/whats-new/2024/05/amazon-bedrock-new-converse-api/
     return {
         # Anthropic models
         "anthropic.claude-3-sonnet-20240229-v1:0": {
@@ -61,7 +60,18 @@ def get_model_features():
                 "converse_api": True,
                 "tool_use": True,
                 "chat": True,
-                "image_chat": True,
+                "image_chat": False,
+                "system_prompt": True
+            }
+        },
+        "anthropic.claude-3-5-haiku-20240620-v1:0": {
+            "name": "Claude 3.5 Haiku",
+            "provider": "Anthropic",
+            "features": {
+                "converse_api": True,
+                "tool_use": True,
+                "chat": True,
+                "image_chat": False,
                 "system_prompt": True
             }
         },
@@ -78,6 +88,17 @@ def get_model_features():
         },
         "anthropic.claude-3-5-sonnet-20240620-v1:0": {
             "name": "Claude 3.5 Sonnet",
+            "provider": "Anthropic",
+            "features": {
+                "converse_api": True,
+                "tool_use": True,
+                "chat": True,
+                "image_chat": True,
+                "system_prompt": True
+            }
+        },
+        "anthropic.claude-3-5-sonnet-v2-20240920-v1:0": {
+            "name": "Claude 3.5 Sonnet v2",
             "provider": "Anthropic",
             "features": {
                 "converse_api": True,
@@ -107,7 +128,7 @@ def get_model_features():
                 "converse_api": True,
                 "tool_use": True,
                 "chat": True,
-                "image_chat": False,
+                "image_chat": True,
                 "system_prompt": True
             }
         },
@@ -133,29 +154,6 @@ def get_model_features():
                 "chat": True,
                 "image_chat": False,
                 "system_prompt": True
-            }
-        },
-        # AI21 models
-        "ai21.jamba-1-5-mini-v1:0": {
-            "name": "Jamba 1.5 Mini",
-            "provider": "AI21",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": False
-            }
-        },
-        "ai21.jamba-1-5-large-v1:0": {
-            "name": "Jamba 1.5 Large",
-            "provider": "AI21",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": False
             }
         },
         # Cohere models
@@ -193,30 +191,19 @@ def get_model_features():
                 "system_prompt": True
             }
         },
+        "mistral.mistral-large-2407-v1:0": {
+            "name": "Mistral Large 2 (24.07)",
+            "provider": "Mistral AI",
+            "features": {
+                "converse_api": True,
+                "tool_use": True,
+                "chat": True,
+                "image_chat": False,
+                "system_prompt": True
+            }
+        },
         "mistral.mistral-small-2402-v1:0": {
             "name": "Mistral Small (24.02)",
-            "provider": "Mistral AI",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
-        "mistral.mistral-7b-instruct-v0:2": {
-            "name": "Mistral 7B Instruct",
-            "provider": "Mistral AI",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
-        "mistral.mixtral-8x7b-instruct-v0:1": {
-            "name": "Mixtral 8x7B Instruct",
             "provider": "Mistral AI",
             "features": {
                 "converse_api": True,
@@ -256,7 +243,7 @@ def get_model_features():
                 "converse_api": True, 
                 "tool_use": True,
                 "chat": True,
-                "image_chat": False,
+                "image_chat": True,
                 "system_prompt": True
             }
         },
@@ -267,7 +254,7 @@ def get_model_features():
                 "converse_api": True,
                 "tool_use": True,
                 "chat": True,
-                "image_chat": False,
+                "image_chat": True,
                 "system_prompt": True
             }
         }
@@ -378,7 +365,8 @@ def get_tool_use_converse_models(client=None):
         client=client,
         filter_features={
             "converse_api": True,
-            "tool_use": True
+            "tool_use": True,
+            "system_prompt": True
         }
     )
 
@@ -390,7 +378,7 @@ def test_available_models():
         print("No models found supporting both Converse API and tool use.")
         return
     
-    print(f"Found {len(models)} models supporting both Converse API and tool use:")
+    print(f"Found {len(models)} models supporting converse, system prompt, and tool use:")
     for model in models:
         print(f"- {model['name']} ({model['provider']}): {model['id']}")
     
@@ -409,10 +397,12 @@ def get_best_available_model(available_models=None):
         str: Model ID to use
     """
     
-    # Define preferred lightweight models in order of preference
+    # Define preferred models in order of preference
     preferred_models = [
         "anthropic.claude-3-haiku-20240307-v1:0",  # Claude 3 Haiku
-        "us.amazon.nova-lite-v1:0"                # Amazon Nova Lite
+        "anthropic.claude-3-5-haiku-20240620-v1:0", # Claude 3.5 Haiku
+        "us.amazon.nova-lite-v1:0",               # Amazon Nova Lite
+        "us.amazon.nova-micro-v1:0"               # Amazon Nova Micro
     ]
     
     try:
