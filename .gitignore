@@ -157,6 +157,7 @@ cython_debug/
 .vscode
 .streamlit
 .DS_Store
+.kiro
 
 #notebooks for testing
 #*.ipynb
