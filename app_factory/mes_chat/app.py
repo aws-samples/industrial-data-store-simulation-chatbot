@@ -780,7 +780,7 @@ def run_mes_chat():
                 FORMAT YOUR RESPONSES:
 
                 First, briefly restate what you understood from the question
-                Present a concise summary of the key findings and your observations. Do not talk about what the query does (e.g. which tables were joined). Instead discuss what the results mean in the context of the question
+                Present a concise summary of the key findings and your observations. Do not talk about what the query does (e.g. which tables were joined, that the query finds X by querying Y). Instead discuss what the results mean in the context of the question
                 For example if the user asks for what items have the longest lead times, respond with 'Item X, Y, and Z have the longest lead times, respectively X days, Y days, and Z days.
                 Keep your explanations clear and relevant to manufacturing operations. Avoid excessive technical jargon when explaining results.
             """

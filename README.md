@@ -1,6 +1,6 @@
 # Manufacturing Operations Hub
 
-A comprehensive platform providing manufacturing operations interfaces powered by Amazon Bedrock. This project offers a combination of natural language interaction with MES (Manufacturing Execution System) data and structured dashboards for production monitoring and management.
+A comprehensive platform providing manufacturing operations interfaces powered by Amazon Bedrock. This project offers a combination of **natural language interaction with MES** (Manufacturing Execution System) data structured dashboards for daily lean production meetings with AI data analysis.
 
 ![MES chatbot UI](assets/mes-chatbot-example-screenshot.png)
 
@@ -226,6 +226,8 @@ Example questions:
 - "What's the OEE for our Frame Welding machines?"
 - "Show me the most common defect types and their severity"
 
+![mes-chatbot-gif](assets/mes-chatbot.gif)
+
 ### Daily Production Meeting
 
 The Production Meeting dashboard includes:
@@ -242,6 +244,8 @@ The Production Meeting dashboard includes:
 10. **Reports** - Generate comprehensive meeting summaries and weekly reports
 
 The dashboard updates in real-time, providing a consistent view for all stakeholders and eliminating the need for manual report preparation before meetings. This allows teams to focus on problem-solving rather than data collection and reporting.
+
+![daily-lean-meetings](assets/ProductionDashboard.gif)
 
 ## AWS Configuration
 
