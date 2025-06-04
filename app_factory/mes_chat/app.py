@@ -17,7 +17,7 @@ import plotly.express as px
 # Import shared modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.database import DatabaseManager, get_tool_config
-from shared.bedrock_utils import get_bedrock_client, get_tool_use_converse_models
+from shared.bedrock_utils import get_bedrock_client, get_available_models, get_best_available_model
 
 # Configuration
 load_dotenv()
@@ -403,10 +403,10 @@ def run_mes_chat():
             key='temperature'
         )
         
-        # Get available bedrock models with tool use capability
+        # Get available bedrock models
         try:
-            # Get all available models that support tool use
-            available_models = get_tool_use_converse_models()
+            # Get all available models 
+            available_models = get_available_models()
             
             # Format models for display in selectbox
             model_options = []
@@ -423,26 +423,24 @@ def run_mes_chat():
             # Create formatted options with provider groups
             for provider in sorted(models_by_provider.keys()):
                 for model in models_by_provider[provider]:
-                    # Format as "Provider - Model Name"
+                    # Format as "Provider - Model Name (tier)"
                     display_name = f"{provider} - {model['name']}"
                     model_options.append(display_name)
                     model_ids.append(model['id'])
             
             # If no models found, provide sensible defaults
             if not model_options:
-                model_options = ["Anthropic - Claude 3 Haiku", "Anthropic - Claude 3 Sonnet", 
-                                "Amazon - Nova Micro", "Amazon - Nova Lite"]
-                model_ids = ["anthropic.claude-3-haiku-20240307-v1:0", "anthropic.claude-3-sonnet-20240229-v1:0",
-                            "us.amazon.nova-micro-v1:0", "us.amazon.nova-lite-v1:0"]
+                model_options = ["Anthropic - Claude 3 Haiku (fast)", "Amazon - Nova Lite (fast)", 
+                                "Mistral AI - Mistral Large 2 (balanced)"]
+                model_ids = ["anthropic.claude-3-haiku-20240307-v1:0", "us.amazon.nova-lite-v1:0",
+                            "mistral.mistral-large-2407-v1:0"]
             
-            # Find the default model to select (prefer Claude 3 Haiku if available)
-            default_index = 0  # Default to first model if preferred models not found
-            preferred_models = ["anthropic.claude-3-haiku-20240307-v1:0", "us.amazon.nova-micro-v1:0"]
+            # Find the default model to select (use get_best_available_model)
+            best_model_id = get_best_available_model(available_models)
+            default_index = 0  # Default to first model if best not found
             
-            for preferred_id in preferred_models:
-                if preferred_id in model_ids:
-                    default_index = model_ids.index(preferred_id)
-                    break
+            if best_model_id in model_ids:
+                default_index = model_ids.index(best_model_id)
             
             # Present model selection to user
             selected_option = st.selectbox(
@@ -450,7 +448,7 @@ def run_mes_chat():
                 options=model_options,
                 index=default_index,
                 key='model_display',
-                help="Select from models that support tool use and the Converse API"
+                help="Select from available models (all support text, tool use, and system prompts)"
             )
             
             # Get the actual model ID from the selected option
@@ -459,19 +457,9 @@ def run_mes_chat():
             
         except Exception as e:
             logging.error(f"Error setting up model selection: {e}")
-            # Fallback to static model selection
-            model_id = st.selectbox(
-                'Select AI Model:',
-                ["anthropic.claude-3-haiku-20240307-v1:0", 
-                "anthropic.claude-3-sonnet-20240229-v1:0",
-                "anthropic.claude-3-5-sonnet-20240620-v1:0",
-                "us.amazon.nova-micro-v1:0", 
-                "us.amazon.nova-lite-v1:0", 
-                "us.amazon.nova-pro-v1:0"],
-                index=0,
-                key='model_id',
-                help="Different models have different capabilities and speeds"
-            )
+            # Fallback to best available model
+            model_id = get_best_available_model()
+            st.warning(f"Using fallback model: {model_id}")
         
         query_timeout = st.slider(
             label='Query Timeout (seconds)',
@@ -780,7 +768,7 @@ def run_mes_chat():
                 FORMAT YOUR RESPONSES:
 
                 First, briefly restate what you understood from the question
-                Present a concise summary of the key findings and your observations. Do not talk about what the query does (e.g. which tables were joined). Instead discuss what the results mean in the context of the question
+                Present a concise summary of the key findings and your observations. Do not talk about what the query does (e.g. which tables were joined, that the query finds X by querying Y). Instead discuss what the results mean in the context of the question
                 For example if the user asks for what items have the longest lead times, respond with 'Item X, Y, and Z have the longest lead times, respectively X days, Y days, and Z days.
                 Keep your explanations clear and relevant to manufacturing operations. Avoid excessive technical jargon when explaining results.
             """

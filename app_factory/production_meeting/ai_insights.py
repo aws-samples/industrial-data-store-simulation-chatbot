@@ -11,7 +11,7 @@ import time
 import plotly.express as px
 
 from shared.database import DatabaseManager
-from shared.bedrock_utils import get_bedrock_client, get_tool_use_converse_models, get_best_available_model
+from shared.bedrock_utils import get_bedrock_client, get_available_models, get_best_available_model
 
 # Initialize database manager
 db_manager = DatabaseManager()
@@ -1469,8 +1469,8 @@ def display_ai_insights_tab():
         
         # Get available models
         try:
-            # Get models that support both tool use and Converse API
-            available_models = get_tool_use_converse_models()
+            # Get models that support the features we need
+            available_models = get_available_models()
             
             # Format model options
             model_options = []
@@ -1487,16 +1487,16 @@ def display_ai_insights_tab():
             # Create formatted options with provider groups
             for provider in sorted(models_by_provider.keys()):
                 for model in models_by_provider[provider]:
-                    model_name = f"{provider} - {model['name']}"
+                    model_name = f"{provider} - {model['name']} ({model['tier']})"
                     model_options.append(model_name)
                     model_ids.append(model['id'])
             
             # Define fallback models if none are found
             if not model_options:
-                model_options = ["Anthropic - Claude 3 Haiku", "Anthropic - Claude 3 Sonnet", 
-                                "Amazon - Nova Lite"]
-                model_ids = ["anthropic.claude-3-haiku-20240307-v1:0", "anthropic.claude-3-sonnet-20240229-v1:0",
-                            "us.amazon.nova-lite-v1:0"]
+                model_options = ["Anthropic - Claude 3 Haiku (fast)", "Amazon - Nova Lite (fast)", 
+                                "Mistral AI - Mistral Large 2 (balanced)"]
+                model_ids = ["anthropic.claude-3-haiku-20240307-v1:0", "us.amazon.nova-lite-v1:0",
+                            "mistral.mistral-large-2407-v1:0"]
             
             # Get best model using our utility function
             best_model_id = get_best_available_model(available_models)
@@ -1510,7 +1510,7 @@ def display_ai_insights_tab():
                 'AI Model:',
                 options=model_options,
                 index=default_index if model_options else 0,
-                help="Select model for generating insights (all models support tool use and conversational features)"
+                help="Select model for generating insights (all models support text and conversational features)"
             )
             
             if model_options:
@@ -1522,7 +1522,7 @@ def display_ai_insights_tab():
         except Exception as e:
             logging.error(f"Error loading available models: {e}")
             st.warning(f"Could not load available models. Using default model.")
-            model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+            model_id = get_best_available_model()
         
         # Temperature control
         temperature = st.slider(

@@ -1,5 +1,5 @@
 """
-Utilities for working with Amazon Bedrock
+Amazon Bedrock utilities
 """
 
 import os
@@ -15,437 +15,275 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def get_bedrock_client():
     """Create a bedrock-runtime client"""
     return boto3.client(
         service_name='bedrock-runtime',
-        region_name=os.getenv("AWS_REGION", "us-east-1"),
-        endpoint_url=f'https://bedrock-runtime.{os.getenv("AWS_REGION", "us-east-1")}.amazonaws.com',
+        region_name=os.getenv("AWS_REGION", "us-east-1")
     )
+
 
 def get_bedrock_management_client():
     """Create a bedrock management client for listing models"""
     return boto3.client(
-        service_name='bedrock',  # Use bedrock service (not bedrock-runtime)
+        service_name='bedrock',
         region_name=os.getenv("AWS_REGION", "us-east-1")
     )
 
-def get_model_features():
+
+def get_supported_models():
     """
-    Returns a dictionary mapping models to their features for the Converse API.
-    This information is typically static but not accessible through the API directly.
+    Returns the supported models with their basic information.
+    All models support text input/output, Converse API, tool use, and system prompts.
+    Models can use either ON_DEMAND or INFERENCE_PROFILE access.
+    """
     
-    Returns:
-        Dictionary mapping model IDs to dictionaries with feature information
-    """
-    # Lists models that support converse, system prompt, and tool use
-    # Based on: https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html
     return {
-        # Anthropic models
-        "anthropic.claude-3-sonnet-20240229-v1:0": {
-            "name": "Claude 3 Sonnet",
-            "provider": "Anthropic",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": True,
-                "system_prompt": True
-            }
-        },
+        # Claude Models (includes both ON_DEMAND and INFERENCE_PROFILE models)
         "anthropic.claude-3-haiku-20240307-v1:0": {
             "name": "Claude 3 Haiku",
             "provider": "Anthropic",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
+            "tier": "fast"
         },
-        "anthropic.claude-3-5-haiku-20240620-v1:0": {
-            "name": "Claude 3.5 Haiku",
+        "anthropic.claude-3-sonnet-20240229-v1:0": {
+            "name": "Claude 3 Sonnet", 
             "provider": "Anthropic",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
-        "anthropic.claude-3-opus-20240229-v1:0": {
-            "name": "Claude 3 Opus",
-            "provider": "Anthropic",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": True,
-                "system_prompt": True
-            }
+            "tier": "balanced"
         },
         "anthropic.claude-3-5-sonnet-20240620-v1:0": {
             "name": "Claude 3.5 Sonnet",
             "provider": "Anthropic",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": True,
-                "system_prompt": True
-            }
+            "tier": "balanced"
         },
-        "anthropic.claude-3-5-sonnet-v2-20240920-v1:0": {
+        "anthropic.claude-3-5-sonnet-20241022-v2:0": {
             "name": "Claude 3.5 Sonnet v2",
             "provider": "Anthropic",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": True,
-                "system_prompt": True
-            }
+            "tier": "balanced"
         },
-        "anthropic.claude-3-7-sonnet-20250219": {
+        "anthropic.claude-3-5-haiku-20241022-v1:0": {
+            "name": "Claude 3.5 Haiku",
+            "provider": "Anthropic",
+            "tier": "fast"
+        },
+        "anthropic.claude-3-7-sonnet-20250219-v1:0": {
             "name": "Claude 3.7 Sonnet",
             "provider": "Anthropic",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": True,
-                "system_prompt": True
-            }
+            "tier": "premium"
         },
-        # Amazon Nova models
-        "amazon.nova-pro-v1:0": {
-            "name": "Amazon Nova Pro",
-            "provider": "Amazon",
-            "use_region_prefix": True,
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": True,
-                "system_prompt": True
-            }
-        },
-        "amazon.nova-lite-v1:0": {
-            "name": "Amazon Nova Lite",
-            "provider": "Amazon",
-            "use_region_prefix": True,
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
+        
+        # Amazon Nova Models
         "amazon.nova-micro-v1:0": {
             "name": "Amazon Nova Micro",
             "provider": "Amazon",
-            "use_region_prefix": True,
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
+            "tier": "fast"
         },
-        # Cohere models
-        "cohere.command-r-v1:0": {
-            "name": "Command R",
-            "provider": "Cohere",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
+        "amazon.nova-lite-v1:0": {
+            "name": "Amazon Nova Lite", 
+            "provider": "Amazon",
+            "tier": "fast"
         },
+        "amazon.nova-pro-v1:0": {
+            "name": "Amazon Nova Pro",
+            "provider": "Amazon", 
+            "tier": "balanced"
+        },
+        
+        # Mistral Model
+        "mistral.mistral-large-2402-v1:0": {
+            "name": "Mistral Large",
+            "provider": "Mistral AI",
+            "tier": "balanced"
+        },
+        
+        # Cohere Model
         "cohere.command-r-plus-v1:0": {
             "name": "Command R+",
             "provider": "Cohere",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
-        # Mistral models
-        "mistral.mistral-large-2402-v1:0": {
-            "name": "Mistral Large (24.02)",
-            "provider": "Mistral AI",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
-        "mistral.mistral-large-2407-v1:0": {
-            "name": "Mistral Large 2 (24.07)",
-            "provider": "Mistral AI",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
-        "mistral.mistral-small-2402-v1:0": {
-            "name": "Mistral Small (24.02)",
-            "provider": "Mistral AI",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
-        # Meta models
-        "meta.llama3-1-405b-instruction-v1:0": {
-            "name": "Llama 3.1 405B",
-            "provider": "Meta",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
-        "meta.llama3-1-70b-instruction-v1:0": {
-            "name": "Llama 3.1 70B",
-            "provider": "Meta",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": False,
-                "system_prompt": True
-            }
-        },
-        "meta.llama3-2-11b-instruct-v1:0": {
-            "name": "Llama 3.2 11B",
-            "provider": "Meta",
-            "features": {
-                "converse_api": True, 
-                "tool_use": True,
-                "chat": True,
-                "image_chat": True,
-                "system_prompt": True
-            }
-        },
-        "meta.llama3-2-90b-instruct-v1:0": {
-            "name": "Llama 3.2 90B",
-            "provider": "Meta",
-            "features": {
-                "converse_api": True,
-                "tool_use": True,
-                "chat": True,
-                "image_chat": True,
-                "system_prompt": True
-            }
+            "tier": "balanced"
         }
     }
 
-def get_available_bedrock_models(client=None, filter_features=None):
+
+def get_available_models(client=None, use_cache=True):
     """
-    Retrieves available Bedrock models with optional feature filtering.
+    Get models that are actually available in the user's account.
+    Accepts both ON_DEMAND and INFERENCE_PROFILE models.
     
     Args:
-        client: An optional boto3 bedrock client. If not provided, a new one will be created.
-        filter_features: Dictionary of features to filter models by, e.g. {"converse_api": True, "tool_use": True}
+        client: Optional bedrock management client
+        use_cache: Whether to use cached results (default: True)
         
     Returns:
-        A list of dictionaries containing model details (id, name, provider, features) for models that:
-        1. Are accessible to the user account
-        2. Match the requested features if filter_features is provided
+        List of available model dictionaries
     """
-    # Create a Bedrock client if not provided
+    # Try to use cached results first
+    if use_cache:
+        try:
+            import streamlit as st
+            if hasattr(st, 'session_state') and 'bedrock_available_models' in st.session_state:
+                cached_models = st.session_state.bedrock_available_models
+                if cached_models:
+                    logger.debug(f"Using cached models: {len(cached_models)} models")
+                    return cached_models
+        except ImportError:
+            # Not in Streamlit environment, skip caching
+            pass
+    
     if client is None:
         client = get_bedrock_management_client()
+        
+    supported_models = get_supported_models()
+    available_models = []
     
-    # Get model features information
-    model_features = get_model_features()
-        
     try:
-        # List all foundation models available to the user
+        logger.info("Fetching available models from AWS Bedrock...")
         response = client.list_foundation_models()
+        accessible_model_ids = {
+            model['modelId'] for model in response['modelSummaries']
+            if model.get('inferenceTypesSupported') and 
+            (
+                'ON_DEMAND' in model.get('inferenceTypesSupported') or 
+                'INFERENCE_PROFILE' in model.get('inferenceTypesSupported')
+            )
+        }
         
-        # Filter models based on availability and requested features
-        available_models = []
+        logger.info(f"Found {len(accessible_model_ids)} accessible models in Bedrock")
         
-        for model in response['modelSummaries']:
-            model_id = model['modelId']
-            
-            # For Amazon models, we need to check if a region prefix is needed
-            inference_id = None
-            
-            # Try direct match first
-            if model_id in model_features:
-                inference_id = model_id
-            
-            # Check if model ID needs region prefix (primarily Amazon models)
-            region = os.getenv("AWS_REGION", "us-east-1")
-            region_prefix = f"{region.split('-')[0]}."  # e.g., "us."
-            prefixed_id = f"{region_prefix}{model_id}"
-            
-            # Check for models where we need to add region prefix 
-            for feature_model_id, info in model_features.items():
-                # If the model uses region prefix and matches after removing prefix
-                if (info.get("use_region_prefix") and 
-                    feature_model_id == model_id and 
-                    not model_id.startswith(region_prefix)):
-                    inference_id = prefixed_id
-                    break
-                # If the model matches after adding region prefix
-                elif feature_model_id == prefixed_id:
-                    inference_id = prefixed_id
-                    break
-            
-            # If we found a match in our features list
-            if inference_id is not None and (model_id in model_features or prefixed_id in model_features):
-                # Get the correct model ID to look up in our features dictionary
-                features_id = model_id if model_id in model_features else prefixed_id
+        for model_id, info in supported_models.items():
+            if model_id in accessible_model_ids:
+                available_models.append({
+                    "id": model_id,
+                    "name": info["name"],
+                    "provider": info["provider"], 
+                    "tier": info["tier"]
+                })
+                logger.debug(f"Added available model: {model_id}")
                 
-                # Check if the model is accessible to the user (inferenceTypes contains "ON_DEMAND")
-                if model.get('inferenceTypesSupported') and 'ON_DEMAND' in model.get('inferenceTypesSupported'):
-                    # If filter_features is provided, check if model has all requested features
-                    features_match = True
-                    if filter_features:
-                        for feature, value in filter_features.items():
-                            model_value = model_features[features_id].get("features", {}).get(feature, False)
-                            if model_value != value:
-                                features_match = False
-                                break
-                    
-                    if features_match:
-                        # Add to available models
-                        model_info = {
-                            "id": inference_id,  # ID to use for API calls
-                            "name": model_features[features_id]["name"],
-                            "provider": model_features[features_id]["provider"],
-                            "features": model_features[features_id].get("features", {})
-                        }
-                        available_models.append(model_info)
+        # Sort by provider and tier for consistent ordering
+        available_models.sort(key=lambda x: (x['provider'], x['tier'], x['name']))
         
-        # Sort models by provider and name for better display
-        available_models.sort(key=lambda x: (x['provider'], x['name']))
+        # Cache the results if in Streamlit environment
+        if use_cache:
+            try:
+                import streamlit as st
+                if hasattr(st, 'session_state'):
+                    st.session_state.bedrock_available_models = available_models
+                    logger.info(f"Cached {len(available_models)} models in session state")
+            except ImportError:
+                pass
         
+        logger.info(f"Returning {len(available_models)} supported models")
         return available_models
         
     except Exception as e:
         logger.error(f"Error retrieving available models: {e}")
-        # Return an empty list since we couldn't retrieve models
         return []
 
-def get_tool_use_converse_models(client=None):
+
+def clear_model_cache():
+    """Clear the cached model list to force a refresh on next call"""
+    try:
+        import streamlit as st
+        if hasattr(st, 'session_state') and 'bedrock_available_models' in st.session_state:
+            del st.session_state.bedrock_available_models
+            logger.info("Cleared model cache")
+    except ImportError:
+        pass
+
+def debug_available_models():
     """
-    Helper function to get models that support both tool use and the Converse API.
-    
-    Args:
-        client: An optional boto3 bedrock client. If not provided, a new one will be created.
+    Debug function to show what models are actually available in Bedrock
+    """
+    try:
+        client = get_bedrock_management_client()
+        response = client.list_foundation_models()
         
-    Returns:
-        A list of dictionaries containing model details for models supporting both features.
-    """
-    return get_available_bedrock_models(
-        client=client,
-        filter_features={
-            "converse_api": True,
-            "tool_use": True,
-            "system_prompt": True
-        }
-    )
+        print("=== ALL MODELS AVAILABLE IN YOUR BEDROCK ACCOUNT ===")
+        models_by_provider = {}
+        
+        for model in response['modelSummaries']:
+            model_id = model['modelId']
+            provider = model_id.split('.')[0].title()
+            
+            if provider not in models_by_provider:
+                models_by_provider[provider] = []
+                
+            # Check for both ON_DEMAND and INFERENCE_PROFILE support
+            inference_types = model.get('inferenceTypesSupported', [])
+            supports_usage = 'ON_DEMAND' in inference_types or 'INFERENCE_PROFILE' in inference_types
+            
+            models_by_provider[provider].append({
+                'id': model_id,
+                'name': model.get('modelName', 'Unknown'),
+                'on_demand': supports_usage,
+                'inference_types': inference_types
+            })
+        
+        for provider in sorted(models_by_provider.keys()):
+            print(f"\n{provider}:")
+            for model in sorted(models_by_provider[provider], key=lambda x: x['id']):
+                status = "✅" if model['on_demand'] else "❌"
+                types_str = ", ".join(model['inference_types']) if model['inference_types'] else "None"
+                print(f"  {status} {model['id']} - {model['name']} ({types_str})")
+        
+        print(f"\n=== SUPPORTED BY OUR APP ===")
+        supported = get_supported_models()
+        for model_id, info in supported.items():
+            print(f"  {info['provider']} - {info['name']}: {model_id}")
+        
+        print(f"\n=== MATCHES ===")
+        available = get_available_models(client)
+        for model in available:
+            print(f"  ✅ {model['provider']} - {model['name']} ({model['tier']}): {model['id']}")
+            
+    except Exception as e:
+        print(f"Error debugging models: {e}")
+        print(f"Check your AWS credentials and permissions")
 
-def test_available_models():
-    """Test function to display available models with tool use and Converse API support"""
-    models = get_tool_use_converse_models()
-    
-    if not models:
-        print("No models found supporting both Converse API and tool use.")
-        return
-    
-    print(f"Found {len(models)} models supporting converse, system prompt, and tool use:")
-    for model in models:
-        print(f"- {model['name']} ({model['provider']}): {model['id']}")
-    
-    return models
 
-def get_best_available_model(available_models=None):
+def get_best_available_model(available_models=None, prefer_tier="fast", use_cache=True):
     """
-    Get the best available model for AI insights from the provided list
-    or fetch available models if none provided.
+    Get the best available model, preferring fast/cheap models by default.
     
     Args:
-        available_models (list, optional): List of available models with tool use capability.
-                                          If None, will be fetched.
-    
+        available_models: Optional list of available models
+        prefer_tier: Preferred tier ("fast", "balanced", "premium")
+        
     Returns:
         str: Model ID to use
     """
-    
-    # Define preferred models in order of preference
-    preferred_models = [
-        "anthropic.claude-3-haiku-20240307-v1:0",  # Claude 3 Haiku
-        "anthropic.claude-3-5-haiku-20240620-v1:0", # Claude 3.5 Haiku
-        "us.amazon.nova-lite-v1:0",               # Amazon Nova Lite
-        "us.amazon.nova-micro-v1:0"               # Amazon Nova Micro
-    ]
-    
-    try:
-        # Get models that support both tool use and Converse API if not provided
-        if available_models is None:
-            available_models = get_tool_use_converse_models()
+    if available_models is None:
+        available_models = get_available_models(use_cache=use_cache)
         
-        # Find first available preferred model
-        model_id = None
-        for preferred in preferred_models:
-            if any(m['id'] == preferred for m in available_models):
-                model_id = preferred
-                logging.info(f"Selected preferred model: {model_id}")
-                break
-        
-        # If no preferred model found, use first available model with suitable features
-        if not model_id and available_models:
-            # Prioritize models from specific providers if available
-            for provider in ["Anthropic", "Amazon"]:
-                provider_models = [m for m in available_models if m['provider'] == provider]
-                if provider_models:
-                    model_id = provider_models[0]['id']
-                    logging.info(f"Selected {provider} model: {model_id}")
-                    break
-            
-            # If still no model selected, just use the first available
-            if not model_id:
-                model_id = available_models[0]['id']
-                logging.info(f"Selected first available model: {model_id}")
-        
-        # Fallback default if all else fails
-        if not model_id:
-            model_id = "anthropic.claude-3-haiku-20240307-v1:0"
-            logging.warning(f"No available models found. Using fallback default: {model_id}")
+    if not available_models:
+        # Fallback to most common model
+        fallback = "anthropic.claude-3-haiku-20240307-v1:0"
+        logger.warning(f"No available models found. Using fallback: {fallback}")
+        return fallback
     
-    except Exception as e:
-        # Log the error and use a default model
-        logging.error(f"Error selecting model: {e}")
-        model_id = "anthropic.claude-3-haiku-20240307-v1:0" 
-        logging.warning(f"Using fallback default model due to error: {model_id}")
+    # Define preference order by tier and provider
+    tier_priority = {"fast": 0, "balanced": 1, "premium": 2}
+    provider_priority = {"Anthropic": 0, "Amazon": 1, "Mistral AI": 2, "Cohere": 3}
     
-    return model_id
+    # If specific tier requested, try to find it first
+    if prefer_tier != "fast":
+        tier_models = [m for m in available_models if m['tier'] == prefer_tier]
+        if tier_models:
+            available_models = tier_models
+    
+    # Sort by preference (tier, then provider)
+    available_models.sort(key=lambda x: (
+        tier_priority.get(x['tier'], 99),
+        provider_priority.get(x['provider'], 99),
+        x['name']
+    ))
+    
+    selected_model = available_models[0]['id']
+    logger.debug(f"Selected model: {selected_model} ({available_models[0]['name']})")
+    
+    return selected_model
+
 
 if __name__ == "__main__":
-    # Run test to display models
-    test_available_models()
+    debug_available_models()
