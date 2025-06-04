@@ -105,17 +105,31 @@ def get_supported_models():
     }
 
 
-def get_available_models(client=None):
+def get_available_models(client=None, use_cache=True):
     """
     Get models that are actually available in the user's account.
     Accepts both ON_DEMAND and INFERENCE_PROFILE models.
     
     Args:
         client: Optional bedrock management client
+        use_cache: Whether to use cached results (default: True)
         
     Returns:
         List of available model dictionaries
     """
+    # Try to use cached results first
+    if use_cache:
+        try:
+            import streamlit as st
+            if hasattr(st, 'session_state') and 'bedrock_available_models' in st.session_state:
+                cached_models = st.session_state.bedrock_available_models
+                if cached_models:
+                    logger.debug(f"Using cached models: {len(cached_models)} models")
+                    return cached_models
+        except ImportError:
+            # Not in Streamlit environment, skip caching
+            pass
+    
     if client is None:
         client = get_bedrock_management_client()
         
@@ -123,6 +137,7 @@ def get_available_models(client=None):
     available_models = []
     
     try:
+        logger.info("Fetching available models from AWS Bedrock...")
         response = client.list_foundation_models()
         accessible_model_ids = {
             model['modelId'] for model in response['modelSummaries']
@@ -148,6 +163,16 @@ def get_available_models(client=None):
         # Sort by provider and tier for consistent ordering
         available_models.sort(key=lambda x: (x['provider'], x['tier'], x['name']))
         
+        # Cache the results if in Streamlit environment
+        if use_cache:
+            try:
+                import streamlit as st
+                if hasattr(st, 'session_state'):
+                    st.session_state.bedrock_available_models = available_models
+                    logger.info(f"Cached {len(available_models)} models in session state")
+            except ImportError:
+                pass
+        
         logger.info(f"Returning {len(available_models)} supported models")
         return available_models
         
@@ -155,6 +180,16 @@ def get_available_models(client=None):
         logger.error(f"Error retrieving available models: {e}")
         return []
 
+
+def clear_model_cache():
+    """Clear the cached model list to force a refresh on next call"""
+    try:
+        import streamlit as st
+        if hasattr(st, 'session_state') and 'bedrock_available_models' in st.session_state:
+            del st.session_state.bedrock_available_models
+            logger.info("Cleared model cache")
+    except ImportError:
+        pass
 
 def debug_available_models():
     """
@@ -207,7 +242,7 @@ def debug_available_models():
         print(f"Check your AWS credentials and permissions")
 
 
-def get_best_available_model(available_models=None, prefer_tier="fast"):
+def get_best_available_model(available_models=None, prefer_tier="fast", use_cache=True):
     """
     Get the best available model, preferring fast/cheap models by default.
     
@@ -219,7 +254,7 @@ def get_best_available_model(available_models=None, prefer_tier="fast"):
         str: Model ID to use
     """
     if available_models is None:
-        available_models = get_available_models()
+        available_models = get_available_models(use_cache=use_cache)
         
     if not available_models:
         # Fallback to most common model
@@ -245,7 +280,7 @@ def get_best_available_model(available_models=None, prefer_tier="fast"):
     ))
     
     selected_model = available_models[0]['id']
-    logger.info(f"Selected model: {selected_model} ({available_models[0]['name']})")
+    logger.debug(f"Selected model: {selected_model} ({available_models[0]['name']})")
     
     return selected_model
 
