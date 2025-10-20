@@ -65,6 +65,7 @@ This is the Sequence Diagram of the chatbot:
 ### Prerequisites
 
 - Python 3.9 or higher
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) - Modern Python package manager
 - [SQLite](https://www.sqlite.org/download.html)
 - AWS account with access to Amazon Bedrock
 (see AWS Configuration section for required permissions and models)
@@ -75,12 +76,13 @@ This is the Sequence Diagram of the chatbot:
 
    If using Amazon SageMaker AI JupyterLab (recommended), you can skip to step 3.
 
-   Create and activate a Python virtual environment:
+   Set up the project environment using uv:
 
    ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   uv sync
    ```
+
+   This will automatically create a virtual environment and install all dependencies.
 
 2. **AWS Configuration**
 
@@ -93,15 +95,17 @@ This is the Sequence Diagram of the chatbot:
 
 3. **Install Required Packages**
 
+   Dependencies are automatically installed with `uv sync` in step 1. If you need to add new packages:
+
    ```bash
-   pip install -r requirements.txt
+   uv add <package-name>
    ```
 
 4. **Generate the MES Database**
 
    ```bash
    # Create tables and simulation data (auto-detects if database exists)
-   python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 14
+   uv run python app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 14
    ```
 
    This will create the database file `mes.db` in the project root directory if it doesn't exist, or refresh the data if it does.
@@ -110,7 +114,7 @@ This is the Sequence Diagram of the chatbot:
 
    ```bash
    # Get help on all configuration options
-   python3 app_factory/data_generator/sqlite-synthetic-mes-data.py --help
+   uv run python app_factory/data_generator/sqlite-synthetic-mes-data.py --help
    ```
 
 ## Running the Applications
@@ -121,17 +125,17 @@ You can run the applications independently or together:
 
 ```bash
 # Start the combined application
-streamlit run app_factory/app.py
+uv run streamlit run app_factory/app.py
 ```
 
 ### Run Components Independently
 
 ```bash
 # Run only the MES Insight Chat (includes both classic and AI agent modes)
-streamlit run app_factory/mes_chat/app.py
+uv run streamlit run app_factory/mes_chat/app.py
 
 # Run only the Daily Production Meeting
-streamlit run app_factory/production_meeting/app.py
+uv run streamlit run app_factory/production_meeting/app.py
 ```
 
 ### Educational Jupyter Notebook
@@ -140,7 +144,7 @@ The repository includes a Jupyter notebook (`text-to-sql-notebook.ipynb`) that d
 
 ```bash
 # Start Jupyter to access the notebook
-jupyter notebook
+uv run jupyter notebook
 ```
 
 ## Database and Simulation
@@ -175,7 +179,7 @@ Use the configuration options to control the date ranges and data characteristic
 ├── README.md                    # This file
 ├── CONTRIBUTING.md              # Contribution guidelines
 ├── CODE_OF_CONDUCT.md           # Code of conduct
-├── requirements.txt             # Project dependencies
+├── pyproject.toml               # Project dependencies and metadata
 ├── .env                         # Environment variables (user-created)
 ├── .gitignore                   # Git ignore file
 ├── text-to-sql-notebook.ipynb   # Educational Jupyter notebook
