@@ -3,7 +3,7 @@ name = "manufacturing-operations-hub"
 version = "1.0.0"
 description = "A comprehensive platform providing manufacturing operations interfaces powered by Amazon Bedrock"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Manufacturing Operations Hub Team"}
 ]
@@ -14,31 +14,31 @@ classifiers = [
     "Intended Audience :: Manufacturing",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
-    "streamlit>=1.42.0",
-    "pandas>=2.2.0",
-    "numpy>=1.24.0",
-    "plotly>=6.0.0",
-    "python-dotenv>=1.0.0",
-    "boto3>=1.37.0",
+    "streamlit>=1.43.0",
+    "pandas>=2.3.0",
+    "numpy>=2.1.0",
+    "plotly>=5.24.0",
+    "python-dotenv>=1.0.1",
+    "boto3>=1.35.0",
     "strands-agents>=1.0",
-    "Faker>=22.0.0",
-    "SQLAlchemy>=2.0.0",
+    "Faker>=33.0.0",
+    "SQLAlchemy>=2.0.36",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "jupyter>=1.0.0",
-    "pytest>=7.0.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
-    "mypy>=1.0.0",
+    "jupyter>=1.1.0",
+    "pytest>=8.3.0",
+    "black>=24.10.0",
+    "flake8>=7.1.0",
+    "mypy>=1.13.0",
 ]
 
 [project.urls]
@@ -50,21 +50,24 @@ Issues = "https://github.com/your-org/manufacturing-operations-hub/issues"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.uv]
-dev-dependencies = [
-    "jupyter>=1.0.0",
-    "pytest>=7.0.0",
-    "black>=23.0.0",
-    "flake8>=6.0.0",
-    "mypy>=1.0.0",
+[tool.hatch.build.targets.wheel]
+packages = ["app_factory"]
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.0",
+    "pytest>=8.3.0",
+    "black>=24.10.0",
+    "flake8>=7.1.0",
+    "mypy>=1.13.0",
 ]
 
 [tool.black]
 line-length = 88
-target-version = ['py39']
+target-version = ['py310']
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
