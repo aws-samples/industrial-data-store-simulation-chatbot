@@ -64,7 +64,7 @@ This is the Sequence Diagram of the chatbot:
 
 ### Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) - Modern Python package manager
 - [SQLite](https://www.sqlite.org/download.html)
 - AWS account with access to Amazon Bedrock
@@ -131,7 +131,7 @@ uv run streamlit run app_factory/app.py
 ### Run Components Independently
 
 ```bash
-# Run only the MES Insight Chat (includes both classic and AI agent modes)
+# Run only the MES Insight Chat
 uv run streamlit run app_factory/mes_chat/app.py
 
 # Run only the Daily Production Meeting
@@ -189,8 +189,7 @@ Use the configuration options to control the date ranges and data characteristic
 │   │   ├── database.py          # Database access
 │   │   └── bedrock_utils.py     # Amazon Bedrock client (for classic chat)
 │   ├── mes_chat/                # MES Chat application
-│   │   ├── app.py               # Main chat interface
-│   │   └── agent_chat.py        # AI agent-powered chat interface
+│   │   └── app.py               # AI agent-powered chat interface
 │   ├── mes_agents/              # AI Agents (New!)
 │   │   ├── mes_analysis_agent.py    # Main intelligent agent
 │   │   ├── agent_manager.py         # Agent lifecycle management
@@ -227,19 +226,14 @@ Use the configuration options to control the date ranges and data characteristic
 
 ### MES Insight Chat
 
-The MES Chat interface now offers two modes:
+The MES Chat interface uses intelligent AI agents powered by the Strands SDK:
 
-**🤖 AI Agent Edition** (New!)
+**🤖 AI Agent Features:**
 - Intelligent agents that break down complex questions into logical steps
 - Multi-step reasoning for sophisticated manufacturing analysis
 - Smart error recovery with educational guidance
 - Real-time progress tracking and partial results
 - AI-selected visualizations based on data characteristics
-
-**💬 Classic Chat** (Original)
-- Direct text-to-SQL conversion using Amazon Bedrock
-- Quick responses for simple queries
-- Traditional chat interface
 
 Example questions for AI agents:
 
