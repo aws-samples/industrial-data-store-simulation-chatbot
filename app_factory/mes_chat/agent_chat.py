@@ -1,8 +1,8 @@
 """
-Agent-enabled MES Chat application using Strands SDK.
+Agent-enabled MES Chat interface using Strands SDK.
 
-This application provides an intelligent chat interface that integrates with the MES Analysis Agent
-to provide comprehensive, multi-step analysis capabilities with progress tracking and 
+This module provides an enhanced chat interface that integrates with the MES Analysis Agent
+to provide intelligent, multi-step analysis capabilities with progress tracking and 
 enhanced result presentation.
 """
 
@@ -39,23 +39,23 @@ logger = logging.getLogger(__name__)
 # Initialize database tool for fallback
 db_tool = DatabaseManager(db_path)
 
+
 def convert_df_to_csv(df):
     """Convert dataframe to CSV for download"""
     return df.to_csv(index=False).encode('utf-8')
 
 
-
-def reset_chat():
+def reset_agent_chat():
     """Reset the agent chat state"""
-    st.session_state.messages = [
+    st.session_state.agent_messages = [
         {
             "role": "assistant", 
             "content": "Welcome to MES Insight Chat with AI Agents! I'm your intelligent manufacturing analyst. How can I help you analyze your MES data today?"
         }
     ]
-    st.session_state.conversation_history = []
-    st.session_state.last_result = None
-    st.session_state.progress = []
+    st.session_state.agent_conversation_history = []
+    st.session_state.agent_last_result = None
+    st.session_state.agent_progress = []
 
 
 def display_progress_updates(progress_updates: List[Dict[str, Any]]):
@@ -95,26 +95,20 @@ def display_progress_updates(progress_updates: List[Dict[str, Any]]):
 
 def display_agent_response(response: Dict[str, Any], message_index: int):
     """
-    Display agent response with enhanced formatting.
+    Display agent response with enhanced error handling and formatting.
     
     Args:
         response: Agent response dictionary
         message_index: Index of the message for unique keys
     """
-    if not response.get('success', True):
-        # Display error response
-        st.error(f"Analysis Error: {response.get('error', 'Unknown error')}")
-        
-        if response.get('suggested_actions'):
-            st.markdown("**Suggested Actions:**")
-            for action in response['suggested_actions']:
-                st.write(f"• {action}")
-        
-        if response.get('recovery_options'):
-            st.markdown("**Recovery Options:**")
-            for option in response['recovery_options']:
-                st.write(f"• {option}")
-        
+    # Handle different types of responses
+    if response.get('partial_success'):
+        # Partial results available
+        display_partial_results_response(response, message_index)
+        return
+    elif not response.get('success', True):
+        # Error response with enhanced information
+        display_enhanced_error_response(response, message_index)
         return
     
     # Display successful analysis
@@ -155,9 +149,151 @@ def display_agent_response(response: Dict[str, Any], message_index: int):
         for i, suggestion in enumerate(follow_ups):
             with cols[i % 2]:
                 if st.button(suggestion, key=f"followup_{message_index}_{i}", use_container_width=True):
-                    st.session_state.messages.append({"role": "user", "content": suggestion})
-                    st.session_state["process_query"] = suggestion
+                    st.session_state.agent_messages.append({"role": "user", "content": suggestion})
+                    st.session_state["process_agent_query"] = suggestion
                     st.rerun()
+
+
+def display_enhanced_error_response(response: Dict[str, Any], message_index: int):
+    """
+    Display enhanced error response with comprehensive information and recovery options.
+    
+    Args:
+        response: Error response dictionary
+        message_index: Index of the message for unique keys
+    """
+    # Main error message
+    error_category = response.get('error_category', 'unknown')
+    severity = response.get('severity', 'medium')
+    
+    # Color code by severity
+    severity_colors = {
+        'low': '🟢',
+        'medium': '🟡', 
+        'high': '🟠',
+        'critical': '🔴'
+    }
+    
+    severity_icon = severity_colors.get(severity, '🟡')
+    
+    st.error(f"{severity_icon} **{response.get('user_friendly_message', 'Analysis Error')}**")
+    
+    # Show root cause if available
+    if response.get('root_cause'):
+        st.info(f"**Root Cause**: {response['root_cause']}")
+    
+    # Recovery options in expandable section
+    if response.get('suggestions') or response.get('recovery_options'):
+        with st.expander("🔧 Recovery Options", expanded=True):
+            recovery_options = response.get('recovery_options', response.get('suggestions', []))
+            for i, option in enumerate(recovery_options):
+                st.write(f"{i+1}. {option}")
+    
+    # Educational content
+    if response.get('educational_content'):
+        with st.expander("💡 Learning Tips", expanded=False):
+            for tip in response['educational_content']:
+                st.markdown(tip)
+    
+    # Alternative approaches
+    if response.get('alternative_approaches'):
+        with st.expander("🎯 Alternative Approaches", expanded=False):
+            st.markdown("**Try these alternative questions:**")
+            cols = st.columns(min(len(response['alternative_approaches']), 2))
+            for i, approach in enumerate(response['alternative_approaches']):
+                with cols[i % 2]:
+                    if st.button(approach, key=f"alt_{message_index}_{i}", use_container_width=True):
+                        st.session_state.agent_messages.append({"role": "user", "content": approach})
+                        st.session_state["process_agent_query"] = approach
+                        st.rerun()
+    
+    # Technical details in collapsible section
+    if response.get('technical_details') or response.get('error_details'):
+        with st.expander("🔍 Technical Details", expanded=False):
+            if response.get('technical_details'):
+                st.code(response['technical_details'])
+            
+            if response.get('error_details'):
+                st.json(response['error_details'])
+    
+    # Execution metadata
+    if response.get('execution_time') or response.get('error_category'):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if response.get('execution_time'):
+                st.metric("Execution Time", f"{response['execution_time']:.2f}s")
+        with col2:
+            st.metric("Error Category", error_category.replace('_', ' ').title())
+        with col3:
+            st.metric("Severity", severity.title())
+
+
+def display_partial_results_response(response: Dict[str, Any], message_index: int):
+    """
+    Display partial results when analysis was interrupted but some progress was made.
+    
+    Args:
+        response: Partial results response dictionary
+        message_index: Index of the message for unique keys
+    """
+    # Main message about partial results
+    st.warning("⏱️ **Analysis Interrupted - Partial Results Available**")
+    st.info(response.get('message', 'Analysis was interrupted, but some progress was made.'))
+    
+    # Progress summary if available
+    if response.get('progress_summary'):
+        progress = response['progress_summary']
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Completed Steps", f"{progress.get('completed_steps', 0)}/{progress.get('total_steps', 0)}")
+        with col2:
+            completion_pct = progress.get('completion_percentage', 0)
+            st.metric("Progress", f"{completion_pct:.1f}%")
+        with col3:
+            st.metric("Last Action", progress.get('last_completed_action', 'Unknown')[:20] + "...")
+    
+    # Show partial results if available
+    if response.get('partial_results'):
+        with st.expander("📊 Partial Results", expanded=True):
+            partial_data = response['partial_results']
+            
+            if partial_data.get('collected_data'):
+                st.json(partial_data['collected_data'])
+            
+            if partial_data.get('suggested_simplified_query'):
+                st.markdown("**Suggested Simplified Query:**")
+                st.code(partial_data['suggested_simplified_query'])
+    
+    # Completion suggestions
+    if response.get('completion_suggestions'):
+        with st.expander("✅ How to Complete the Analysis", expanded=True):
+            st.markdown("**Suggestions to get complete results:**")
+            for i, suggestion in enumerate(response['completion_suggestions']):
+                st.write(f"{i+1}. {suggestion}")
+    
+    # Next steps
+    if response.get('next_steps'):
+        with st.expander("🎯 Next Steps", expanded=False):
+            cols = st.columns(min(len(response['next_steps']), 2))
+            for i, step in enumerate(response['next_steps']):
+                with cols[i % 2]:
+                    if st.button(step, key=f"next_{message_index}_{i}", use_container_width=True):
+                        st.session_state.agent_messages.append({"role": "user", "content": step})
+                        st.session_state["process_agent_query"] = step
+                        st.rerun()
+    
+    # Error analysis if available
+    if response.get('error_analysis'):
+        with st.expander("🔍 Error Analysis", expanded=False):
+            error_analysis = response['error_analysis']
+            st.write(f"**Category**: {error_analysis.get('category', 'Unknown').replace('_', ' ').title()}")
+            st.write(f"**Root Cause**: {error_analysis.get('root_cause', 'Unknown')}")
+            
+            if error_analysis.get('educational_content'):
+                st.markdown("**Learning Tips:**")
+                for tip in error_analysis['educational_content']:
+                    st.markdown(tip)
 
 
 def display_agent_status_sidebar(agent_manager: MESAgentManager):
@@ -227,8 +363,8 @@ async def process_agent_query(agent_manager: MESAgentManager, query: str) -> Dic
     """
     # Prepare context from conversation history
     context = {
-        'history': st.session_state.get('conversation_history', []),
-        'previous_results': [st.session_state.get('last_result')] if st.session_state.get('last_result') else [],
+        'history': st.session_state.get('agent_conversation_history', []),
+        'previous_results': [st.session_state.get('agent_last_result')] if st.session_state.get('agent_last_result') else [],
         'preferences': {
             'analysis_depth': st.session_state.get('analysis_depth', 'standard'),
             'include_visualizations': True,
@@ -240,18 +376,19 @@ async def process_agent_query(agent_manager: MESAgentManager, query: str) -> Dic
     result = await agent_manager.process_query(query, context)
     
     # Update conversation history
-    st.session_state.conversation_history.append({
+    st.session_state.agent_conversation_history.append({
         'query': query,
         'timestamp': datetime.now().isoformat(),
         'summary': result.get('analysis', '')[:200] + '...' if result.get('analysis') else 'Analysis completed'
     })
     
     # Store last result
-    st.session_state.last_result = result
+    st.session_state.agent_last_result = result
     
     return result
 
-def run_mes_chat():
+
+def run_agent_mes_chat():
     """Main function to run the agent-enabled MES chat interface"""
     
     # Page configuration
@@ -265,17 +402,17 @@ def run_mes_chat():
     """)
     
     # Initialize session state for agent chat
-    if "messages" not in st.session_state:
-        reset_chat()
+    if "agent_messages" not in st.session_state:
+        reset_agent_chat()
     
-    if "conversation_history" not in st.session_state:
-        st.session_state.conversation_history = []
+    if "agent_conversation_history" not in st.session_state:
+        st.session_state.agent_conversation_history = []
         
-    if "last_result" not in st.session_state:
-        st.session_state.last_result = None
+    if "agent_last_result" not in st.session_state:
+        st.session_state.agent_last_result = None
         
-    if "progress" not in st.session_state:
-        st.session_state.progress = []
+    if "agent_progress" not in st.session_state:
+        st.session_state.agent_progress = []
     
     # Initialize agent manager with default configuration
     try:
@@ -294,7 +431,7 @@ def run_mes_chat():
         st.subheader("⚙️ Agent Chat Settings")
         
         # Reset chat button
-        st.button("🔄 Reset Agent Chat", on_click=reset_chat, use_container_width=True)
+        st.button("🔄 Reset Agent Chat", on_click=reset_agent_chat, use_container_width=True)
         
         # Return to main menu button
         if st.button("🏠 Return to Main Menu", use_container_width=True):
@@ -367,7 +504,7 @@ def run_mes_chat():
             📈 **Advanced Visualizations**: AI-selected charts based on data characteristics
             """)
     
-    # Main panel with chat interface
+    # Main chat interface
     main_col = st.container()
     
     with main_col:
@@ -375,15 +512,13 @@ def run_mes_chat():
         try:
             questions_path = Path(__file__).parent.parent / 'data' / 'sample_questions.json'
             if not questions_path.exists():
-                questions_path = Path('sample_questions.json')  # Fallback to original location
+                questions_path = Path('sample_questions.json')
                 
             with open(questions_path, 'r', encoding="utf-8") as file:
                 question_data = json.load(file)
-                question_list = list(question_data['general'].values())
-                category_questions = question_data['categories']
+                category_questions = question_data.get('categories', {})
         except Exception as e:
-            st.error(f"Error loading example questions: {e}")
-            question_list = []
+            logger.warning(f"Could not load example questions: {e}")
             category_questions = {}
     
         # Example questions for agents
@@ -397,43 +532,43 @@ def run_mes_chat():
                 st.markdown("##### 🏭 Production Analysis")
                 for q in category_questions.get("🏭 Production", [])[:3]:
                     if st.button(f"🤖 {q}", key=f"agent_prod_{hash(q)}", use_container_width=True):
-                        st.session_state.messages.append({"role": "user", "content": q})
-                        st.session_state["process_query"] = q
+                        st.session_state.agent_messages.append({"role": "user", "content": q})
+                        st.session_state["process_agent_query"] = q
                         st.rerun()
                         
                 st.markdown("##### 🔧 Equipment Analysis")
                 for q in category_questions.get("🔧 Machines", [])[:3]:
                     if st.button(f"🤖 {q}", key=f"agent_mach_{hash(q)}", use_container_width=True):
-                        st.session_state.messages.append({"role": "user", "content": q})
-                        st.session_state["process_query"] = q
+                        st.session_state.agent_messages.append({"role": "user", "content": q})
+                        st.session_state["process_agent_query"] = q
                         st.rerun()
             
             with col2:
                 st.markdown("##### 📦 Inventory Analysis")
                 for q in category_questions.get("📦 Inventory", [])[:3]:
                     if st.button(f"🤖 {q}", key=f"agent_inv_{hash(q)}", use_container_width=True):
-                        st.session_state.messages.append({"role": "user", "content": q})
-                        st.session_state["process_query"] = q
+                        st.session_state.agent_messages.append({"role": "user", "content": q})
+                        st.session_state["process_agent_query"] = q
                         st.rerun()
                         
                 st.markdown("##### ⚠️ Quality Analysis")
                 for q in category_questions.get("⚠️ Quality", [])[:3]:
                     if st.button(f"🤖 {q}", key=f"agent_qual_{hash(q)}", use_container_width=True):
-                        st.session_state.messages.append({"role": "user", "content": q})
-                        st.session_state["process_query"] = q
+                        st.session_state.agent_messages.append({"role": "user", "content": q})
+                        st.session_state["process_agent_query"] = q
                         st.rerun()
-                    
+        
         st.divider()
         
         # Chat history container
         st.subheader("💬 Agent Conversation")
         
-        # Initialize process_query if it doesn't exist
-        if "process_query" not in st.session_state:
-            st.session_state["process_query"] = None
+        # Initialize process_agent_query if it doesn't exist
+        if "process_agent_query" not in st.session_state:
+            st.session_state["process_agent_query"] = None
         
         # Display chat history
-        for i, message in enumerate(st.session_state.messages):
+        for i, message in enumerate(st.session_state.agent_messages):
             if message["role"] == "user":
                 with st.chat_message("user"):
                     st.write(message["content"])
@@ -450,14 +585,14 @@ def run_mes_chat():
         user_input = st.chat_input("Ask your AI agent about manufacturing data...")
         
         if user_input:
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            st.session_state["process_query"] = user_input
+            st.session_state.agent_messages.append({"role": "user", "content": user_input})
+            st.session_state["process_agent_query"] = user_input
             st.rerun()
     
     # Process agent query if needed
-    if st.session_state["process_query"]:
-        query = st.session_state["process_query"]
-        st.session_state["process_query"] = None  # Clear the flag
+    if st.session_state["process_agent_query"]:
+        query = st.session_state["process_agent_query"]
+        st.session_state["process_agent_query"] = None  # Clear the flag
         
         # Check if agent is ready
         if not agent_manager.is_ready():
@@ -473,7 +608,7 @@ def run_mes_chat():
                 response = asyncio.run(process_agent_query(agent_manager, query))
                 
                 # Add the response to messages
-                st.session_state.messages.append({
+                st.session_state.agent_messages.append({
                     "role": "assistant",
                     "content": response
                 })
@@ -499,7 +634,7 @@ def run_mes_chat():
                     ]
                 }
                 
-                st.session_state.messages.append({
+                st.session_state.agent_messages.append({
                     "role": "assistant", 
                     "content": error_response
                 })
@@ -507,14 +642,6 @@ def run_mes_chat():
                 progress_placeholder.empty()
                 st.rerun()
 
-# This allows the module to be run directly for testing
+
 if __name__ == "__main__":
-    # Set page config
-    st.set_page_config(
-        page_title="MES Insight Chat", 
-        page_icon="⚙️",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
-    run_mes_chat()
+    run_agent_mes_chat()

@@ -6,6 +6,9 @@ plotly>=6.0.0
 python-dotenv>=1.0.0
 boto3>=1.37.0
 
+# Strands SDK for agents
+strands-agents>=1.0
+
 # For the database generator
 Faker>=22.0.0
 SQLAlchemy>=2.0.0

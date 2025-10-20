@@ -18,10 +18,12 @@ The application is built on a synthetic MES database for an e-bike manufacturing
 
 ### MES Insight Chat
 
-- Natural language interface to query MES data without SQL knowledge
-- Interactive conversation with an AI assistant
-- Data visualization for query results
-- Deep insights into production processes, inventory, quality, and equipment
+- **🤖 AI Agents**: Intelligent agents powered by Strands SDK for sophisticated analysis
+- **🧠 Multi-Step Reasoning**: Handles complex queries requiring multiple database operations
+- **🛠️ Smart Error Recovery**: Automatic error diagnosis and intelligent recovery suggestions
+- **📊 AI-Selected Visualizations**: Agents choose the best charts for your data
+- **📚 Educational Guidance**: Learn better query techniques as you explore data
+- **⚡ Real-Time Progress**: See what agents are doing with live progress updates
 
 ### Daily Production Meeting
 
@@ -125,7 +127,7 @@ streamlit run app_factory/app.py
 ### Run Components Independently
 
 ```bash
-# Run only the MES Insight Chat
+# Run only the MES Insight Chat (includes both classic and AI agent modes)
 streamlit run app_factory/mes_chat/app.py
 
 # Run only the Daily Production Meeting
@@ -181,9 +183,18 @@ Use the configuration options to control the date ranges and data characteristic
 │   ├── app.py                   # Combined application entry point
 │   ├── shared/                  # Shared utilities
 │   │   ├── database.py          # Database access
-│   │   └── bedrock_utils.py     # Amazon Bedrock client
+│   │   └── bedrock_utils.py     # Amazon Bedrock client (for classic chat)
 │   ├── mes_chat/                # MES Chat application
-│   │   └── app.py               # Chat interface
+│   │   ├── app.py               # Main chat interface
+│   │   └── agent_chat.py        # AI agent-powered chat interface
+│   ├── mes_agents/              # AI Agents (New!)
+│   │   ├── mes_analysis_agent.py    # Main intelligent agent
+│   │   ├── agent_manager.py         # Agent lifecycle management
+│   │   ├── error_handling.py        # Smart error recovery
+│   │   ├── config.py               # Agent configuration
+│   │   └── tools/                  # Agent tools
+│   │       ├── database_tools.py   # Enhanced SQLite access
+│   │       └── visualization_tools.py # AI-powered visualizations
 │   ├── production_meeting/      # Production Meeting application
 │   │   ├── app.py               # Main dashboard
 │   │   ├── dashboards/          # Individual dashboard components
@@ -212,19 +223,26 @@ Use the configuration options to control the date ranges and data characteristic
 
 ### MES Insight Chat
 
-In the MES Chat interface, you can:
+The MES Chat interface now offers two modes:
 
-1. Ask questions about production data in natural language
-2. Select example questions from predefined categories
-3. View query results in tabular or chart format
-4. Download data as CSV
+**🤖 AI Agent Edition** (New!)
+- Intelligent agents that break down complex questions into logical steps
+- Multi-step reasoning for sophisticated manufacturing analysis
+- Smart error recovery with educational guidance
+- Real-time progress tracking and partial results
+- AI-selected visualizations based on data characteristics
 
-Example questions:
+**💬 Classic Chat** (Original)
+- Direct text-to-SQL conversion using Amazon Bedrock
+- Quick responses for simple queries
+- Traditional chat interface
 
-- "What's our current production schedule for the next week?"
-- "Which inventory items are below their reorder level?"
-- "What's the OEE for our Frame Welding machines?"
-- "Show me the most common defect types and their severity"
+Example questions for AI agents:
+
+- "Analyze our production efficiency trends and identify bottlenecks"
+- "What quality issues correlate with equipment downtime?"
+- "Compare inventory consumption patterns across product lines"
+- "Investigate root causes of recent defects and suggest improvements"
 
 ![mes-chatbot-gif](assets/mes-chatbot.gif)
 
