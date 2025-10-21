@@ -22,7 +22,7 @@ The Production Meeting Agents system replaces direct Bedrock API calls with soph
 
 3. **Run Production Meeting Dashboard**
    ```bash
-   uv run streamlit run app_factory/production_meeting/app.py
+   uv run streamlit run app_factory/production_meeting/dashboard.py
    ```
 
 ## Configuration Options

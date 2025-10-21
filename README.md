@@ -125,17 +125,17 @@ You can run the applications independently or together:
 
 ```bash
 # Start the combined application
-uv run streamlit run app_factory/app.py
+uv run streamlit run app_factory/main.py
 ```
 
 ### Run Components Independently
 
 ```bash
 # Run only the MES Insight Chat
-uv run streamlit run app_factory/mes_chat/app.py
+uv run streamlit run app_factory/mes_chat/chat_interface.py
 
 # Run only the Daily Production Meeting
-uv run streamlit run app_factory/production_meeting/app.py
+uv run streamlit run app_factory/production_meeting/dashboard.py
 ```
 
 ### Educational Jupyter Notebook
@@ -184,12 +184,12 @@ Use the configuration options to control the date ranges and data characteristic
 ├── .gitignore                   # Git ignore file
 ├── text-to-sql-notebook.ipynb   # Educational Jupyter notebook
 ├── app_factory/                 # Main application code
-│   ├── app.py                   # Combined application entry point
+│   ├── main.py                  # Combined application entry point
 │   ├── shared/                  # Shared utilities
 │   │   ├── database.py          # Database access
 │   │   └── bedrock_utils.py     # Amazon Bedrock client (for classic chat)
 │   ├── mes_chat/                # MES Chat application
-│   │   └── app.py               # AI agent-powered chat interface
+│   │   └── chat_interface.py    # AI agent-powered chat interface
 │   ├── mes_agents/              # AI Agents (New!)
 │   │   ├── mes_analysis_agent.py    # Main intelligent agent
 │   │   ├── agent_manager.py         # Agent lifecycle management
@@ -199,7 +199,7 @@ Use the configuration options to control the date ranges and data characteristic
 │   │       ├── database_tools.py   # Enhanced SQLite access
 │   │       └── visualization_tools.py # AI-powered visualizations
 │   ├── production_meeting/      # Production Meeting application
-│   │   ├── app.py               # Main dashboard
+│   │   ├── dashboard.py         # Main dashboard
 │   │   ├── dashboards/          # Individual dashboard components
 │   │   │   ├── equipment.py     # Equipment status dashboard
 │   │   │   ├── inventory.py     # Inventory dashboard

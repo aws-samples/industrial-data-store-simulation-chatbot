@@ -18,7 +18,7 @@ A sophisticated agent system that enhances manufacturing dashboards with intelli
 
 3. **Run Production Meeting Dashboard**
    ```bash
-   uv run streamlit run app_factory/production_meeting/app.py
+   uv run streamlit run app_factory/production_meeting/dashboard.py
    ```
 
 4. **Try Enhanced AI Insights**
@@ -194,7 +194,7 @@ echo "AWS_PROFILE=dev-profile" >> .env
 uv run python app_factory/data_generator/sqlite-synthetic-mes-data.py
 
 # Run application
-uv run streamlit run app_factory/production_meeting/app.py
+uv run streamlit run app_factory/production_meeting/dashboard.py
 ```
 
 ### Production Environment
@@ -206,7 +206,7 @@ export AWS_PROFILE="production-profile"
 export PRODUCTION_MEETING_DEFAULT_MODEL="us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # Run with production settings
-uv run streamlit run app_factory/production_meeting/app.py --server.port 8501
+uv run streamlit run app_factory/production_meeting/dashboard.py --server.port 8501
 ```
 
 ## Monitoring and Troubleshooting

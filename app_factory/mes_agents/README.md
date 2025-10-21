@@ -11,7 +11,7 @@ A demo implementation of intelligent agents for Manufacturing Execution System (
 
 2. **Run the Demo**
    ```bash
-   streamlit run app_factory/mes_chat/app.py
+   streamlit run app_factory/mes_chat/chat_interface.py
    ```
 
 3. **Try Agent Chat**

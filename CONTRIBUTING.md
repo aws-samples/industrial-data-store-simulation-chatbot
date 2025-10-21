@@ -43,9 +43,9 @@ This project uses `uv` for Python package management. Follow these steps to set 
    This will create a virtual environment and install all project dependencies from `pyproject.toml`.
 
 3. **Run the applications:**
-   - Main application: `uv run streamlit run app_factory/app.py`
-   - MES Chat: `uv run streamlit run app_factory/mes_chat/app.py`
-   - Production Meeting: `uv run streamlit run app_factory/production_meeting/app.py`
+   - Main application: `uv run streamlit run app_factory/main.py`
+   - MES Chat: `uv run streamlit run app_factory/mes_chat/chat_interface.py`
+   - Production Meeting: `uv run streamlit run app_factory/production_meeting/dashboard.py`
 
 4. **Generate sample data:**
    ```bash
