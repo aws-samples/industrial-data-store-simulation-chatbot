@@ -59,7 +59,80 @@ This architecture enables natural language queries against manufacturing databas
 
 This is the Sequence Diagram of the chatbot:
 
-![MES System Architecture](assets/mes-chatbot-architecture-sequence-diagram.png)
+```mermaid
+sequenceDiagram
+    participant User as 👤 User
+    participant UI as 🖥️ Streamlit UI
+    participant Manager as 🤖 MES Agent Manager
+    participant Agent as 🧠 MES Analysis Agent
+    participant Tools as 🔧 Agent Tools
+    participant DB as 🗄️ SQLite Database (MES)
+    participant LLM as ☁️ AWS Bedrock (Claude)
+
+    Note over User, LLM: MES Chatbot Interaction Flow
+
+    %% Initial Setup
+    User->>UI: Launch MES Chat Application
+    UI->>Manager: Initialize MES Agent Manager
+    Manager->>Agent: Create MES Analysis Agent
+    Agent->>LLM: Initialize with system prompt & tools
+    Agent-->>Manager: Agent ready
+    Manager-->>UI: Agent manager ready
+    UI-->>User: Display chat interface
+
+    %% User Query Processing
+    User->>UI: Enter manufacturing query
+    UI->>Manager: process_query(query, context)
+    Manager->>Agent: analyze(query, context)
+    
+    %% Agent Analysis Process
+    Agent->>LLM: Send query with system prompt
+    
+    Note over Agent, LLM: Agent uses specialized MES system prompt<br/>with manufacturing domain expertise
+    
+    LLM->>Tools: get_database_schema()
+    Tools->>DB: PRAGMA table_info, sample data
+    DB-->>Tools: Schema information
+    Tools-->>LLM: Database structure & sample data
+    
+    LLM->>Tools: run_sqlite_query(sql_query)
+    Tools->>DB: Execute SQL query
+    DB-->>Tools: Query results
+    Tools-->>LLM: Formatted results with metadata
+    
+    opt Visualization Needed
+        LLM->>Tools: create_intelligent_visualization(data)
+        Tools-->>LLM: Chart/graph data
+    end
+    
+    LLM-->>Agent: Analysis response with insights
+    Agent-->>Manager: Formatted response with metadata
+    Manager-->>UI: Complete analysis result
+    
+    %% UI Display
+    UI->>UI: Display analysis with formatting
+    UI->>UI: Show progress updates
+    UI->>UI: Generate follow-up suggestions
+    UI-->>User: Present comprehensive results
+
+    %% Error Handling Flow
+    alt Database Error
+        DB-->>Tools: SQLite error
+        Tools->>Tools: Analyze error with IntelligentErrorAnalyzer
+        Tools-->>LLM: Error analysis with recovery suggestions
+        LLM-->>Agent: Error response with guidance
+        Agent-->>Manager: Error result with alternatives
+        Manager-->>UI: Error response with suggestions
+        UI-->>User: Display error with recovery options
+    end
+
+    %% Follow-up Interaction
+    opt User Selects Follow-up
+        User->>UI: Click suggested follow-up question
+        Note over UI, LLM: Process repeats with new query
+    end
+
+```
 
 ## Installation
 
