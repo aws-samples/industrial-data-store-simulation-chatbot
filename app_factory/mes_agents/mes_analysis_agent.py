@@ -285,9 +285,15 @@ class MESAnalysisAgent:
         Returns:
             Dictionary containing comprehensive analysis results
         """
+        start_time = datetime.now()
+        
         try:
             # Use the agent-as-tool for analysis
             analysis_result = mes_analysis_tool(query)
+            
+            # Calculate execution time
+            end_time = datetime.now()
+            execution_time = (end_time - start_time).total_seconds()
             
             return {
                 'success': True,
@@ -296,8 +302,8 @@ class MESAnalysisAgent:
                 'analysis': analysis_result,
                 'progress_updates': get_progress_updates(),
                 'timestamp': datetime.now().isoformat(),
-                'execution_time': 0.0,  # Simplified for agent-as-tools pattern
-                'capabilities_used': ['agent_as_tool', 'database_query', 'visualization'],
+                'execution_time': execution_time,
+                'capabilities_used': ['mes_analysis_tool', 'run_sqlite_query', 'get_database_schema', 'create_intelligent_visualization'],
                 'follow_up_suggestions': self._generate_follow_up_suggestions(analysis_result, query)
             }
             

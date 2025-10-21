@@ -457,717 +457,11 @@ def generate_predictive_insights():
     else:
         st.info("No critical inventory predictions found")
 
-def generate_decision_intelligence():
-    """Generate focused action items based on current data"""
-    logger.info("Generating decision intelligence insights")
-    st.header("🎯 Critical Actions Needed")
-    
-    # Get inventory items below reorder point
-    inventory_query = """
-    SELECT 
-        i.Name as ItemName,
-        i.Category,
-        i.Quantity as CurrentQuantity,
-        i.ReorderLevel,
-        (i.ReorderLevel - i.Quantity) as ShortageAmount,
-        i.LeadTime as LeadTimeInDays
-    FROM 
-        Inventory i
-    WHERE 
-        i.Quantity < i.ReorderLevel
-    ORDER BY 
-        ShortageAmount DESC
-    LIMIT 5
-    """
-    
-    result = db_manager.execute_query(inventory_query)
-    
-    if result["success"] and result["row_count"] > 0:
-        st.subheader("Inventory Actions")
-        inventory_df = pd.DataFrame(result["rows"])
-        
-        for i, row in inventory_df.iterrows():
-            st.info(f"**Replenish {row['ItemName']}**: {row['ShortageAmount']} units below reorder level with {row['LeadTimeInDays']} day lead time")
-            
-    # Get top downtime reasons to address
-    downtime_query = """
-    SELECT 
-        d.Reason,
-        COUNT(d.DowntimeID) as EventCount,
-        SUM(d.Duration) as TotalMinutes,
-        m.Type as MachineType
-    FROM 
-        Downtimes d
-    JOIN 
-        Machines m ON d.MachineID = m.MachineID
-    WHERE 
-        d.StartTime >= date('now', '-7 day')
-    GROUP BY 
-        d.Reason, m.Type
-    ORDER BY 
-        TotalMinutes DESC
-    LIMIT 3
-    """
-    
-    result = db_manager.execute_query(downtime_query)
-    
-    if result["success"] and result["row_count"] > 0:
-        st.subheader("Downtime Actions")
-        downtime_df = pd.DataFrame(result["rows"])
-        
-        for i, row in downtime_df.iterrows():
-            st.info(f"**Address {row['Reason']} in {row['MachineType']}**: {row['EventCount']} events totaling {row['TotalMinutes']} minutes")
 
-def generate_narrative_summary():
-    """Generate a narrative summary of production data"""
-    logger.info("Generating narrative summary of production data")
-    st.header("📖 Production Story")
-    
-    # Get production data from the last 7 days
-    production_query = """
-    SELECT 
-        date(wo.ActualEndTime) as ProductionDate,
-        SUM(wo.Quantity) as PlannedQuantity,
-        SUM(wo.ActualProduction) as ActualProduction,
-        SUM(wo.Scrap) as ScrapQuantity,
-        ROUND(SUM(wo.ActualProduction) * 100.0 / SUM(wo.Quantity), 2) as CompletionPercentage
-    FROM 
-        WorkOrders wo
-    WHERE 
-        wo.Status = 'completed'
-        AND wo.ActualEndTime >= date('now', '-7 day')
-    GROUP BY 
-        date(wo.ActualEndTime)
-    ORDER BY 
-        ProductionDate
-    """
-    
-    result = db_manager.execute_query(production_query)
-    
-    if result["success"] and result["row_count"] > 0:
-        prod_df = pd.DataFrame(result["rows"])
-        
-        # Get yesterday's production
-        if len(prod_df) >= 2:
-            yesterday = prod_df.iloc[-2]
-            today = prod_df.iloc[-1]
-            
-            # Calculate performance changes
-            completion_change = today['CompletionPercentage'] - yesterday['CompletionPercentage']
-            output_change = today['ActualProduction'] - yesterday['ActualProduction']
-            
-            # Get production by product category for yesterday
-            category_query = """
-            SELECT 
-                p.Category as ProductCategory,
-                SUM(wo.ActualProduction) as TotalProduction,
-                ROUND(SUM(wo.ActualProduction) * 100.0 / SUM(wo.Quantity), 2) as CompletionRate
-            FROM 
-                WorkOrders wo
-            JOIN 
-                Products p ON wo.ProductID = p.ProductID
-            WHERE 
-                wo.Status = 'completed'
-                AND date(wo.ActualEndTime) = date('now', '-1 day')
-            GROUP BY 
-                p.Category
-            ORDER BY 
-                TotalProduction DESC
-            """
-            
-            category_result = db_manager.execute_query(category_query)
-            
-            # Get quality metrics for yesterday
-            quality_query = """
-            SELECT 
-                ROUND(AVG(qc.DefectRate) * 100, 2) as AvgDefectRate,
-                ROUND(AVG(qc.YieldRate) * 100, 2) as AvgYieldRate,
-                COUNT(qc.CheckID) as InspectionCount,
-                SUM(CASE WHEN qc.Result = 'pass' THEN 1 ELSE 0 END) as PassCount,
-                SUM(CASE WHEN qc.Result = 'fail' THEN 1 ELSE 0 END) as FailCount
-            FROM 
-                QualityControl qc
-            WHERE 
-                date(qc.Date) = date('now', '-1 day')
-            """
-            
-            quality_result = db_manager.execute_query(quality_query)
-            
-            # Get equipment performance for yesterday
-            equipment_query = """
-            SELECT 
-                ROUND(AVG(oee.OEE) * 100, 2) as AvgOEE,
-                ROUND(AVG(oee.Availability) * 100, 2) as AvgAvailability,
-                ROUND(AVG(oee.Performance) * 100, 2) as AvgPerformance,
-                ROUND(AVG(oee.Quality) * 100, 2) as AvgQuality
-            FROM 
-                OEEMetrics oee
-            WHERE 
-                date(oee.Date) = date('now', '-1 day')
-            """
-            
-            equipment_result = db_manager.execute_query(equipment_query)
-            
-            # Generate executive summary
-            st.subheader("Executive Summary")
-            
-            summary_parts = []
-            
-            # Production summary
-            summary_parts.append(f"Production yesterday achieved {today['CompletionPercentage']:.1f}% of target")
-            
-            # Quality summary if available
-            if quality_result["success"] and quality_result["row_count"] > 0:
-                quality_data = quality_result["rows"][0]
-                summary_parts.append(f"with quality yield at {quality_data['AvgYieldRate']:.1f}%")
-            
-            # Production change
-            if completion_change > 0:
-                summary_parts.append(f"Improvement of {completion_change:.1f}% from previous day")
-            elif completion_change < 0:
-                summary_parts.append(f"Decline of {abs(completion_change):.1f}% from previous day")
-                
-            # Equipment summary if available
-            if equipment_result["success"] and equipment_result["row_count"] > 0:
-                equipment_data = equipment_result["rows"][0]
-                summary_parts.append(f"OEE was {equipment_data['AvgOEE']:.1f}%")
-            
-            # Create the full summary
-            summary = ". ".join(summary_parts) + "."
-            
-            st.info(summary)
-            
-            # Add tabs for different narrative views
-            tab1, tab2, tab3 = st.tabs(["Key Trends", "What's Changed", "Focus Areas"])
-            
-            with tab1:
-                st.write("**Key Production Trends**")
-                
-                # Generate trends based on last 7 days of data
-                avg_completion = prod_df['CompletionPercentage'].mean()
-                trend_direction = "↗️ Improving" if prod_df['CompletionPercentage'].iloc[-1] > avg_completion else "↘️ Declining"
-                
-                st.write(f"**Production Completion**: {trend_direction} (Last 7 days)")
-                st.write(f"  7-day average: {avg_completion:.1f}%, Yesterday: {today['CompletionPercentage']:.1f}%")
-                
-                # Quality trend if available
-                if quality_result["success"] and quality_result["row_count"] > 0:
-                    quality_data = quality_result["rows"][0]
-                    
-                    # Get historical quality data for trend
-                    hist_quality_query = """
-                    SELECT 
-                        date(qc.Date) as InspectionDate,
-                        ROUND(AVG(qc.YieldRate) * 100, 2) as AvgYieldRate
-                    FROM 
-                        QualityControl qc
-                    WHERE 
-                        qc.Date >= date('now', '-7 day')
-                    GROUP BY 
-                        date(qc.Date)
-                    ORDER BY 
-                        InspectionDate
-                    """
-                    
-                    hist_quality_result = db_manager.execute_query(hist_quality_query)
-                    
-                    if hist_quality_result["success"] and hist_quality_result["row_count"] > 0:
-                        hist_quality_df = pd.DataFrame(hist_quality_result["rows"])
-                        
-                        avg_yield = hist_quality_df['AvgYieldRate'].mean()
-                        yield_trend = "↗️ Improving" if hist_quality_df['AvgYieldRate'].iloc[-1] > avg_yield else "↘️ Declining"
-                        
-                        st.write(f"**Quality Yield**: {yield_trend} (Last 7 days)")
-                        st.write(f"  7-day average: {avg_yield:.1f}%, Yesterday: {quality_data['AvgYieldRate']:.1f}%")
-                
-                # Equipment trend if available
-                if equipment_result["success"] and equipment_result["row_count"] > 0:
-                    equipment_data = equipment_result["rows"][0]
-                    
-                    # Get historical OEE data for trend
-                    hist_oee_query = """
-                    SELECT 
-                        date(oee.Date) as MeasurementDate,
-                        ROUND(AVG(oee.OEE) * 100, 2) as AvgOEE
-                    FROM 
-                        OEEMetrics oee
-                    WHERE 
-                        oee.Date >= date('now', '-7 day')
-                    GROUP BY 
-                        date(oee.Date)
-                    ORDER BY 
-                        MeasurementDate
-                    """
-                    
-                    hist_oee_result = db_manager.execute_query(hist_oee_query)
-                    
-                    if hist_oee_result["success"] and hist_oee_result["row_count"] > 0:
-                        hist_oee_df = pd.DataFrame(hist_oee_result["rows"])
-                        
-                        avg_oee = hist_oee_df['AvgOEE'].mean()
-                        oee_trend = "↗️ Improving" if hist_oee_df['AvgOEE'].iloc[-1] > avg_oee else "↘️ Declining"
-                        
-                        st.write(f"**OEE**: {oee_trend} (Last 7 days)")
-                        st.write(f"  7-day average: {avg_oee:.1f}%, Yesterday: {equipment_data['AvgOEE']:.1f}%")
-            
-            with tab2:
-                st.write("**What's Changed Since Yesterday**")
-                
-                # Create columns for positive and negative changes
-                pos_col, neg_col = st.columns(2)
-                
-                # Get notable changes in production, quality, equipment, etc.
-                changes = {
-                    "improvements": [],
-                    "concerns": []
-                }
-                
-                # Production changes
-                if completion_change >= 2:  # At least 2% improvement
-                    changes["improvements"].append(f"Production completion rate **+{completion_change:.1f}%**")
-                elif completion_change <= -2:  # At least 2% decline
-                    changes["concerns"].append(f"Production completion rate **{completion_change:.1f}%**")
-                
-                # Get significant changes in quality metrics
-                if quality_result["success"] and quality_result["row_count"] > 0:
-                    quality_data = quality_result["rows"][0]
-                    
-                    # Get previous day's quality data
-                    prev_quality_query = """
-                    SELECT 
-                        ROUND(AVG(qc.DefectRate) * 100, 2) as AvgDefectRate,
-                        ROUND(AVG(qc.YieldRate) * 100, 2) as AvgYieldRate
-                    FROM 
-                        QualityControl qc
-                    WHERE 
-                        date(qc.Date) = date('now', '-2 day')
-                    """
-                    
-                    prev_quality_result = db_manager.execute_query(prev_quality_query)
-                    
-                    if prev_quality_result["success"] and prev_quality_result["row_count"] > 0:
-                        prev_quality_data = prev_quality_result["rows"][0]
-                        
-                        # Calculate changes
-                        yield_change = quality_data['AvgYieldRate'] - prev_quality_data['AvgYieldRate']
-                        defect_change = quality_data['AvgDefectRate'] - prev_quality_data['AvgDefectRate']
-                        
-                        if yield_change >= 1:  # At least 1% improvement in yield
-                            changes["improvements"].append(f"Quality yield **+{yield_change:.1f}%**")
-                        elif yield_change <= -1:  # At least 1% decline in yield
-                            changes["concerns"].append(f"Quality yield **{yield_change:.1f}%**")
-                        
-                        if defect_change <= -1:  # At least 1% reduction in defects
-                            changes["improvements"].append(f"Defect rate **{defect_change:.1f}%**")
-                        elif defect_change >= 1:  # At least 1% increase in defects
-                            changes["concerns"].append(f"Defect rate **+{defect_change:.1f}%**")
-                
-                # Get significant changes in equipment performance
-                if equipment_result["success"] and equipment_result["row_count"] > 0:
-                    equipment_data = equipment_result["rows"][0]
-                    
-                    # Get previous day's equipment data
-                    prev_equipment_query = """
-                    SELECT 
-                        ROUND(AVG(oee.OEE) * 100, 2) as AvgOEE,
-                        ROUND(AVG(oee.Availability) * 100, 2) as AvgAvailability
-                    FROM 
-                        OEEMetrics oee
-                    WHERE 
-                        date(oee.Date) = date('now', '-2 day')
-                    """
-                    
-                    prev_equipment_result = db_manager.execute_query(prev_equipment_query)
-                    
-                    if prev_equipment_result["success"] and prev_equipment_result["row_count"] > 0:
-                        prev_equipment_data = prev_equipment_result["rows"][0]
-                        
-                        # Calculate changes
-                        oee_change = equipment_data['AvgOEE'] - prev_equipment_data['AvgOEE']
-                        availability_change = equipment_data['AvgAvailability'] - prev_equipment_data['AvgAvailability']
-                        
-                        if oee_change >= 2:  # At least 2% improvement in OEE
-                            changes["improvements"].append(f"OEE **+{oee_change:.1f}%**")
-                        elif oee_change <= -2:  # At least 2% decline in OEE
-                            changes["concerns"].append(f"OEE **{oee_change:.1f}%**")
-                        
-                        if availability_change >= 2:  # At least 2% improvement in availability
-                            changes["improvements"].append(f"Machine availability **+{availability_change:.1f}%**")
-                        elif availability_change <= -2:  # At least 2% decline in availability
-                            changes["concerns"].append(f"Machine availability **{availability_change:.1f}%**")
-                
-                # Check for inventory alerts
-                inventory_query = """
-                SELECT 
-                    COUNT(*) as AlertCount
-                FROM 
-                    Inventory
-                WHERE 
-                    Quantity < ReorderLevel
-                """
-                
-                inventory_result = db_manager.execute_query(inventory_query)
-                
-                if inventory_result["success"] and inventory_result["row_count"] > 0:
-                    alert_count = inventory_result["rows"][0]['AlertCount']
-                    
-                    if alert_count > 0:
-                        # Get specific inventory items that are low
-                        low_inventory_query = """
-                        SELECT 
-                            i.Name as ItemName,
-                            i.Quantity as CurrentQuantity,
-                            i.ReorderLevel,
-                            (i.ReorderLevel - i.Quantity) as ShortageAmount
-                        FROM 
-                            Inventory i
-                        WHERE 
-                            i.Quantity < i.ReorderLevel
-                        ORDER BY 
-                            ShortageAmount DESC
-                        LIMIT 3
-                        """
-                        
-                        low_inventory_result = db_manager.execute_query(low_inventory_query)
-                        
-                        if low_inventory_result["success"] and low_inventory_result["row_count"] > 0:
-                            low_items = pd.DataFrame(low_inventory_result["rows"])
-                            item_names = low_items['ItemName'].tolist()
-                            item_text = ", ".join(item_names)
-                            changes["concerns"].append(f"**{alert_count} materials below reorder point**: {item_text}")
-                        else:
-                            changes["concerns"].append(f"**{alert_count} materials** below reorder point")
-                
-                # Display changes
-                with pos_col:
-                    st.write("**Improvements ✅**")
-                    if changes["improvements"]:
-                        for improvement in changes["improvements"]:
-                            st.write(f"- {improvement}")
-                    else:
-                        st.write("- No significant improvements detected")
-                
-                with neg_col:
-                    st.write("**Concerns ⚠️**")
-                    if changes["concerns"]:
-                        for concern in changes["concerns"]:
-                            st.write(f"- {concern}")
-                    else:
-                        st.write("- No significant concerns detected")
-            
-            with tab3:
-                st.write("**Focus Areas for Today**")
-                
-                # Identify focus areas based on production data, quality issues, etc.
-                focus_areas = []
-                
-                # Check for completion rate issues
-                if today['CompletionPercentage'] < 90:
-                    focus_areas.append({
-                        "area": "Production Completion",
-                        "reason": f"Current completion rate ({today['CompletionPercentage']:.1f}%) below target (90%)"
-                    })
-                
-                # Check for quality issues
-                if quality_result["success"] and quality_result["row_count"] > 0:
-                    quality_data = quality_result["rows"][0]
-                    
-                    if quality_data['AvgDefectRate'] > 5:
-                        focus_areas.append({
-                            "area": "Quality",
-                            "reason": f"Defect rate ({quality_data['AvgDefectRate']:.1f}%) above target (5%)"
-                        })
-                
-                # Check for OEE issues
-                if equipment_result["success"] and equipment_result["row_count"] > 0:
-                    equipment_data = equipment_result["rows"][0]
-                    
-                    if equipment_data['AvgOEE'] < 75:
-                        focus_areas.append({
-                            "area": "Equipment Effectiveness",
-                            "reason": f"OEE ({equipment_data['AvgOEE']:.1f}%) below target (75%)"
-                        })
-                
-                # Check for inventory alerts
-                if inventory_result["success"] and inventory_result["row_count"] > 0:
-                    alert_count = inventory_result["rows"][0]['AlertCount']
-                    
-                    if alert_count > 0:
-                        focus_areas.append({
-                            "area": "Inventory Management",
-                            "reason": f"{alert_count} materials below reorder point"
-                        })
-                
-                # Get top bottleneck
-                bottleneck_query = """
-                SELECT 
-                    wc.Name as WorkCenterName,
-                    COUNT(wo.OrderID) as ActiveOrders
-                FROM 
-                    WorkOrders wo
-                JOIN 
-                    WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
-                WHERE 
-                    wo.Status = 'in_progress'
-                GROUP BY 
-                    wc.Name
-                ORDER BY 
-                    ActiveOrders DESC
-                LIMIT 1
-                """
-                
-                bottleneck_result = db_manager.execute_query(bottleneck_query)
-                
-                if bottleneck_result["success"] and bottleneck_result["row_count"] > 0:
-                    bottleneck = bottleneck_result["rows"][0]
-                    
-                    focus_areas.append({
-                        "area": f"{bottleneck['WorkCenterName']} Work Center",
-                        "reason": f"Current system bottleneck with {bottleneck['ActiveOrders']} active orders"
-                    })
-                
-                # Display focus areas
-                if focus_areas:
-                    for i, area in enumerate(focus_areas):
-                        st.write(f"**{i+1}. {area['area']}**")
-                        st.write(f"  - *Why*: {area['reason']}")
-                else:
-                    st.success("No critical focus areas detected - operations are running smoothly")
-    else:
-        st.warning("Not enough production data available to generate narrative summary")
 
-def add_conversational_analysis():
-    """Add a natural language interface to drill into specific production issues"""
-    st.header("🔍 Ask Me Anything")
-    
-    example_questions = [
-        "What would improve our on-time delivery rate?",
-        "Which products have the highest defect rates?", 
-        "What inventory items need replenishment?",
-        "Where are our biggest bottlenecks in production?"
-    ]
-    
-    # Initialize session state for current question if needed
-    if "current_question" not in st.session_state:
-        st.session_state.current_question = ""
-    
-    # Display example questions as clickable buttons
-    st.write("Try asking:")
-    question_cols = st.columns(2)
-    for i, question in enumerate(example_questions):
-        if question_cols[i % 2].button(question, key=f"q_{i}"):
-            st.session_state.current_question = question
-    
-    # Input field for custom questions
-    user_question = st.text_input(
-        "Ask a question about production data:", 
-        value=st.session_state.current_question
-    )
-    
-    if user_question:
-        # Update session state
-        st.session_state.current_question = user_question
-        
-        # Process the question
-        with st.spinner("Analyzing data..."):
-            # Generate response using AI
-            response = generate_ai_insight("all", query=user_question)
-            
-            st.markdown(response)
-            
-            # Try to display relevant visualizations based on the question
-            
-            # For defect-related questions
-            if "defect" in user_question.lower() or "quality" in user_question.lower():
-                # Get defect data
-                defect_query = """
-                SELECT 
-                    d.DefectType,
-                    COUNT(d.DefectID) as DefectCount,
-                    AVG(d.Severity) as AvgSeverity,
-                    p.Name as ProductName,
-                    p.Category as ProductCategory,
-                    wc.Name as WorkCenterName
-                FROM 
-                    Defects d
-                JOIN 
-                    QualityControl qc ON d.CheckID = qc.CheckID
-                JOIN 
-                    WorkOrders wo ON qc.OrderID = wo.OrderID
-                JOIN 
-                    Products p ON wo.ProductID = p.ProductID
-                JOIN 
-                    WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
-                WHERE 
-                    qc.Date >= date('now', '-30 day')
-                GROUP BY 
-                    d.DefectType, p.Name, p.Category, wc.Name
-                ORDER BY 
-                    DefectCount DESC
-                LIMIT 15
-                """
-                
-                result = db_manager.execute_query(defect_query)
-                
-                if result["success"] and result["row_count"] > 0:
-                    defect_df = pd.DataFrame(result["rows"])
-                    
-                    # Create visualization based on available data
-                    st.subheader("Related Data Visualization")
-                    
-                    fig = px.bar(
-                        defect_df.head(10), 
-                        x="DefectType", 
-                        y="DefectCount",
-                        color="AvgSeverity",
-                        hover_data=["ProductCategory", "WorkCenterName"],
-                        title="Top Defect Types by Count and Severity",
-                        color_continuous_scale="Reds"
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            # For OEE/equipment-related questions
-            elif "oee" in user_question.lower() or "equipment" in user_question.lower() or "machine" in user_question.lower():
-                # Get OEE data by shift or machine type based on the question
-                if "shift" in user_question.lower():
-                    # OEE by shift
-                    oee_query = """
-                    SELECT 
-                        s.Name as ShiftName,
-                        ROUND(AVG(oee.OEE) * 100, 2) as AvgOEE,
-                        ROUND(AVG(oee.Availability) * 100, 2) as AvgAvailability,
-                        ROUND(AVG(oee.Performance) * 100, 2) as AvgPerformance,
-                        ROUND(AVG(oee.Quality) * 100, 2) as AvgQuality
-                    FROM 
-                        OEEMetrics oee
-                    JOIN 
-                        Machines m ON oee.MachineID = m.MachineID
-                    JOIN 
-                        WorkOrders wo ON m.MachineID = wo.MachineID
-                    JOIN 
-                        Employees e ON wo.EmployeeID = e.EmployeeID
-                    JOIN 
-                        Shifts s ON e.ShiftID = s.ShiftID
-                    WHERE 
-                        oee.Date >= date('now', '-30 day')
-                    GROUP BY 
-                        s.Name
-                    ORDER BY 
-                        AvgOEE DESC
-                    """
-                else:
-                    # OEE by machine type
-                    oee_query = """
-                    SELECT 
-                        m.Type as MachineType,
-                        ROUND(AVG(oee.OEE) * 100, 2) as AvgOEE,
-                        ROUND(AVG(oee.Availability) * 100, 2) as AvgAvailability,
-                        ROUND(AVG(oee.Performance) * 100, 2) as AvgPerformance,
-                        ROUND(AVG(oee.Quality) * 100, 2) as AvgQuality
-                    FROM 
-                        OEEMetrics oee
-                    JOIN 
-                        Machines m ON oee.MachineID = m.MachineID
-                    WHERE 
-                        oee.Date >= date('now', '-30 day')
-                    GROUP BY 
-                        m.Type
-                    ORDER BY 
-                        AvgOEE DESC
-                    """
-                
-                result = db_manager.execute_query(oee_query)
-                
-                if result["success"] and result["row_count"] > 0:
-                    oee_df = pd.DataFrame(result["rows"])
-                    
-                    # Create visualization based on available data
-                    st.subheader("Related Data Visualization")
-                    
-                    # Determine the grouping column (ShiftName or MachineType)
-                    group_col = "ShiftName" if "ShiftName" in oee_df.columns else "MachineType"
-                    
-                    # Create bar chart
-                    oee_components = oee_df.melt(
-                        id_vars=[group_col],
-                        value_vars=["AvgAvailability", "AvgPerformance", "AvgQuality", "AvgOEE"],
-                        var_name="Metric",
-                        value_name="Value"
-                    )
-                    
-                    fig = px.bar(
-                        oee_components,
-                        x=group_col,
-                        y="Value",
-                        color="Metric",
-                        barmode="group",
-                        title=f"OEE Components by {group_col}",
-                        labels={"Value": "Percentage (%)", group_col: group_col.replace("Name", "")}
-                    )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            # For inventory-related questions
-            elif "inventory" in user_question.lower() or "material" in user_question.lower() or "component" in user_question.lower():
-                # Get inventory data
-                inventory_query = """
-                SELECT 
-                    i.Name as ItemName,
-                    i.Category,
-                    i.Quantity as CurrentQuantity,
-                    i.ReorderLevel,
-                    (i.Quantity - i.ReorderLevel) as Margin,
-                    i.LeadTime as LeadTimeInDays,
-                    s.Name as SupplierName
-                FROM 
-                    Inventory i
-                JOIN 
-                    Suppliers s ON i.SupplierID = s.SupplierID
-                ORDER BY 
-                    Margin ASC
-                LIMIT 20
-                """
-                
-                result = db_manager.execute_query(inventory_query)
-                
-                if result["success"] and result["row_count"] > 0:
-                    inventory_df = pd.DataFrame(result["rows"])
-                    
-                    # Create visualization based on available data
-                    st.subheader("Related Data Visualization")
-                    
-                    # Calculate inventory status
-                    inventory_df["Status"] = pd.cut(
-                        inventory_df["Margin"],
-                        bins=[-float('inf'), -10, 0, float('inf')],
-                        labels=["Critical", "Low", "Adequate"]
-                    )
-                    
-                    # Create bar chart
-                    fig = px.bar(
-                        inventory_df.head(15),
-                        x="ItemName",
-                        y="CurrentQuantity",
-                        color="Status",
-                        hover_data=["ReorderLevel", "LeadTimeInDays", "SupplierName"],
-                        title="Inventory Levels vs. Reorder Points",
-                        labels={"CurrentQuantity": "Current Quantity", "ItemName": "Item"},
-                        color_discrete_map={"Critical": "red", "Low": "orange", "Adequate": "green"}
-                    )
-                    
-                    # Add reorder level line
-                    for i, row in inventory_df.head(15).iterrows():
-                        fig.add_shape(
-                            type="line",
-                            x0=i-0.4,
-                            x1=i+0.4,
-                            y0=row["ReorderLevel"],
-                            y1=row["ReorderLevel"],
-                            line=dict(color="black", width=2, dash="dash")
-                        )
-                    
-                    st.plotly_chart(fig, use_container_width=True)
+
+
+
 
 def display_cached_analysis(analysis_data, analysis_type):
     """Display cached analysis results"""
@@ -1215,9 +509,7 @@ def display_cached_analysis(analysis_data, analysis_type):
     else:
         # For other analysis types, show specific cached data if available
         analysis_map = {
-            "Decision Intelligence": "production_summary",
-            "Predictive Insights": "equipment_status", 
-            "Narrative Analysis": "quality_insights"
+            "Predictive Insights": "equipment_status"
         }
         
         target_analysis = analysis_map.get(analysis_type)
@@ -1292,13 +584,17 @@ def display_ai_insights_tab():
             "Analysis Type",
             options=[
                 "Quick Summary", 
-                "Decision Intelligence", 
-                "Predictive Insights", 
-                "Narrative Analysis", 
-                "Conversational Q&A"
+                "Predictive Insights"
             ],
             index=0,
         )
+        
+        # Reset auto-load state when switching analysis types
+        if "previous_analysis_type" not in st.session_state:
+            st.session_state.previous_analysis_type = analysis_type
+        elif st.session_state.previous_analysis_type != analysis_type:
+            st.session_state.auto_loaded_summary = False
+            st.session_state.previous_analysis_type = analysis_type
         
         # Settings for live analysis
         if use_cached == "Live Agent (Comprehensive)":
@@ -1335,11 +631,22 @@ def display_ai_insights_tab():
                 help="Adjust insights based on meeting timeframe"
             )
         
-        # Generate button
-        if use_cached == "Cached (Fast)":
-            generate_button = st.button("Load Cached Analysis", use_container_width=True)
+        # Initialize auto-load tracking
+        if "auto_loaded_summary" not in st.session_state:
+            st.session_state.auto_loaded_summary = False
+        
+        # Dynamic button text based on state
+        if (use_cached == "Cached (Fast)" and 
+            analysis_type == "Quick Summary" and 
+            cache_status['is_fresh'] and 
+            st.session_state.auto_loaded_summary):
+            button_text = "Refresh Cached Analysis"
+        elif use_cached == "Cached (Fast)":
+            button_text = "Load Cached Analysis"
         else:
-            generate_button = st.button("Generate Live Analysis", use_container_width=True)
+            button_text = "Generate Live Analysis"
+        
+        generate_button = st.button(button_text, use_container_width=True)
         
         # MES Chat integration
         st.divider()
@@ -1375,7 +682,17 @@ def display_ai_insights_tab():
                 cached_analysis = cache_manager.get_latest_analysis(max_age_hours=24)
                 
                 if cached_analysis:
+                    # Show refresh info if this was a refresh action
+                    if (analysis_type == "Quick Summary" and 
+                        st.session_state.auto_loaded_summary):
+                        latest = cache_status['latest_analysis']
+                        st.info(f"🔄 Refreshed Quick Summary from cache (Generated: {latest['date']})")
+                    
                     display_cached_analysis(cached_analysis, analysis_type)
+                    
+                    # Mark as loaded for Quick Summary
+                    if analysis_type == "Quick Summary":
+                        st.session_state.auto_loaded_summary = True
                 else:
                     st.error("No cached analysis available. Please use Live Agent analysis or run the daily scheduler.")
                     st.info("To generate daily cache, run: `uv run python scripts/run_daily_analysis.py` or `make run-analysis`")
@@ -1383,21 +700,15 @@ def display_ai_insights_tab():
             else:
                 # Use live agent analysis (original functionality)
                 # Initialize various analysis session states
-                for key in ["summary_insights", "decision_insights", "predictive_insights", "narrative_insights"]:
+                for key in ["summary_insights", "predictive_insights"]:
                     if key not in st.session_state:
                         st.session_state[key] = False
                 
                 # Determine which analysis to display
                 if analysis_type == "Quick Summary":
                     st.session_state.current_analysis = "summary"
-                elif analysis_type == "Decision Intelligence":
-                    st.session_state.current_analysis = "decision"
                 elif analysis_type == "Predictive Insights":
                     st.session_state.current_analysis = "predictive"
-                elif analysis_type == "Narrative Analysis":
-                    st.session_state.current_analysis = "narrative"
-                elif analysis_type == "Conversational Q&A":
-                    st.session_state.current_analysis = "conversational"
         
         # Display the appropriate analysis based on state (for live analysis)
         if hasattr(st.session_state, 'current_analysis') and use_cached == "Live Agent (Comprehensive)":
@@ -1407,14 +718,6 @@ def display_ai_insights_tab():
                 st.markdown(summary, unsafe_allow_html=True)
                 st.session_state.summary_insights = True
             
-            elif st.session_state.current_analysis == "decision":
-                if not st.session_state.decision_insights:
-                    with st.spinner("Generating decision intelligence insights..."):
-                        generate_decision_intelligence()
-                        st.session_state.decision_insights = True
-                else:
-                    generate_decision_intelligence()
-            
             elif st.session_state.current_analysis == "predictive":
                 if not st.session_state.predictive_insights:
                     with st.spinner("Generating predictive insights..."):
@@ -1422,40 +725,56 @@ def display_ai_insights_tab():
                         st.session_state.predictive_insights = True
                 else:
                     generate_predictive_insights()
-            
-            elif st.session_state.current_analysis == "narrative":
-                if not st.session_state.narrative_insights:
-                    with st.spinner("Generating narrative insights..."):
-                        generate_narrative_summary()
-                        st.session_state.narrative_insights = True
-                else:
-                    generate_narrative_summary()
-            
-            elif st.session_state.current_analysis == "conversational":
-                add_conversational_analysis()
         
         elif not generate_button:
-            # Show initial state
-            st.info("Select an analysis mode and click the generate button to get started")
-            
-            # Show preview of available cached data
-            if cache_status['is_fresh']:
-                st.subheader("📋 Available Cached Analysis")
-                cached_analysis = cache_manager.get_latest_analysis()
+            # Auto-load Quick Summary if cached data is fresh and not already loaded
+            if (use_cached == "Cached (Fast)" and 
+                analysis_type == "Quick Summary" and 
+                cache_status['is_fresh'] and 
+                not st.session_state.auto_loaded_summary):
+                
+                # Auto-load cached Quick Summary
+                cached_analysis = cache_manager.get_latest_analysis(max_age_hours=24)
                 if cached_analysis:
-                    analyses = cached_analysis.get('analyses', {})
-                    for name, data in analyses.items():
-                        if 'analysis' in data:
-                            display_name = name.replace('_', ' ').title()
-                            with st.expander(f"Preview: {display_name}"):
-                                # Show first 200 characters
-                                preview = data['analysis'][:200] + "..." if len(data['analysis']) > 200 else data['analysis']
-                                st.write(preview)
-                                st.info(f"Generated: {data.get('generated_at', 'Unknown')}")
+                    # Show cache info
+                    latest = cache_status['latest_analysis']
+                    st.success(f"✅ Auto-loaded Quick Summary from cache (Generated: {latest['date']})")
+                    
+                    # Display the analysis
+                    display_cached_analysis(cached_analysis, "Quick Summary")
+                    st.session_state.auto_loaded_summary = True
+                else:
+                    st.error("No cached analysis available. Please use Live Agent analysis or run the daily scheduler.")
+                    st.info("To generate daily cache, run: `uv run python scripts/run_daily_analysis.py` or `make run-analysis`")
+            
+            elif (use_cached == "Cached (Fast)" and 
+                  analysis_type == "Predictive Insights"):
+                # For Predictive Insights, show instruction to click generate
+                st.info("Click 'Load Cached Analysis' to view predictive insights from the daily analysis cache.")
+                
+                # Show cache freshness info
+                if cache_status['is_fresh']:
+                    latest = cache_status['latest_analysis']
+                    st.info(f"Cache available from: {latest['date']}")
+                else:
+                    st.warning("No fresh cache available - consider using Live Agent analysis.")
+            
+            elif use_cached == "Live Agent (Comprehensive)":
+                # For live analysis, show instruction
+                st.info("Click 'Generate Live Analysis' to create real-time insights using production meeting agents.")
+                
+                if not agent_manager.is_ready():
+                    st.warning("⚠️ Agents are still initializing. Please wait or try refreshing.")
+            
             else:
-                st.info("💡 **Tip**: Run the daily analysis scheduler to enable fast cached insights!")
-                st.code("uv run python scripts/run_daily_analysis.py")
-                st.info("Or use the shortcut: `make run-analysis`")
+                # Fallback state
+                st.info("Select an analysis mode and type to get started.")
+                
+                # Show helpful tips for cache setup if no cache available
+                if not cache_status['is_fresh']:
+                    st.info("💡 **Tip**: Run the daily analysis scheduler to enable fast cached insights!")
+                    st.code("uv run python scripts/run_daily_analysis.py")
+                    st.info("Or use the shortcut: `make run-analysis`")
 
 
 

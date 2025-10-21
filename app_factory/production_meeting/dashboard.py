@@ -27,10 +27,7 @@ from .report import display_report_generator
 from .ai_insights import (
     display_ai_insights_tab, 
     provide_tab_insights,
-    generate_predictive_insights,
-    generate_decision_intelligence,
-    generate_narrative_summary,
-    add_conversational_analysis
+    generate_predictive_insights
 )
 
 # Initialize database manager
@@ -291,12 +288,10 @@ def run_production_meeting():
             display_ai_insights_tab()
         elif analysis_type == "Predictive Analysis":
             generate_predictive_insights()
-        elif analysis_type == "Decision Intelligence":
-            generate_decision_intelligence()
-        elif analysis_type == "Data Storytelling":
-            generate_narrative_summary()
-        else:  # Conversational Q&A
-            add_conversational_analysis()
+        else:
+            # For other analysis types, redirect to the main AI insights tab
+            st.info("This analysis type has been consolidated into the main AI Insights tab.")
+            display_ai_insights_tab()
     
     # Tab 8: Meeting Notes
     with tabs[7]:
@@ -334,8 +329,9 @@ def run_production_meeting():
             
             if st.button("Generate Executive Summary", use_container_width=True):
                 with st.spinner("Analyzing data and generating executive summary..."):
-                    # Simply call the narrative summary function - it already provides what we need
-                    generate_narrative_summary()
+                    # Use the AI insights tab for executive summary
+                    st.info("Executive summary functionality has been moved to the AI Insights tab.")
+                    st.markdown("Please use the **AI Insights** tab for comprehensive analysis and summaries.")
 
 def show_welcome_screen():
     """Display welcome screen with demo introduction"""

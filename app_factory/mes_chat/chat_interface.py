@@ -127,25 +127,34 @@ def display_agent_response(response: Dict[str, Any], message_index: int):
     if progress_updates:
         display_progress_updates(progress_updates)
     
-    # Display execution metadata
+    # Display execution metadata in smaller format
     execution_time = response.get('execution_time', 0)
     analysis_depth = response.get('analysis_depth', 'standard')
     agent_type = response.get('agent_type', 'MES Analysis Agent')
     
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Analysis Time", f"{execution_time:.2f}s")
-    with col2:
-        st.metric("Analysis Depth", analysis_depth.title())
-    with col3:
-        st.metric("Agent Type", agent_type.replace('MES ', ''))
+    # Create a compact stats display
+    stats_text = f"**Analysis Time:** {execution_time:.2f}s | **Analysis Depth:** {analysis_depth.title()} | **Agent Type:** Strands Agent"
+    st.caption(stats_text)
     
-    # Display capabilities used
+    # Display tools used
     capabilities_used = response.get('capabilities_used', [])
     if capabilities_used:
-        st.markdown("**Analysis Capabilities Used:**")
-        caps_text = " • ".join(cap.replace('_', ' ').title() for cap in capabilities_used)
-        st.info(caps_text)
+        # Format tool names for better display
+        formatted_tools = []
+        for tool in capabilities_used:
+            if tool == 'mes_analysis_tool':
+                formatted_tools.append('MES Analysis')
+            elif tool == 'run_sqlite_query':
+                formatted_tools.append('SQL Query')
+            elif tool == 'get_database_schema':
+                formatted_tools.append('Schema Analysis')
+            elif tool == 'create_intelligent_visualization':
+                formatted_tools.append('Visualization')
+            else:
+                formatted_tools.append(tool.replace('_', ' ').title())
+        
+        tools_text = " • ".join(formatted_tools)
+        st.caption(f"**Strands Tools Used:** {tools_text}")
     
     # Display follow-up suggestions
     follow_ups = response.get('follow_up_suggestions', [])
