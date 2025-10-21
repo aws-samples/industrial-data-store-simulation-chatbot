@@ -47,10 +47,11 @@ Features include:
 - **📦 Inventory Alerts** - Items below reorder level with days of supply analysis
 - **👥 Productivity** - Employee and shift performance metrics
 - **🔍 Root Cause Analysis** - Interactive defect analysis tools
-- **🤖 AI Insights** - Predictive analytics and decision intelligence
+- **🤖 AI Insights** - Predictive analytics and decision intelligence with daily caching for instant loading
 - **📋 Action Items** - Track and manage action items
 - **📝 Meeting Notes** - Document discussions and decisions
 - **📄 Reports** - Generate meeting summaries and weekly reports
+- **⚡ Daily Analysis Caching** - Automated daily analysis generation for lightning-fast dashboard performance
 
 ### System Architecture
 
@@ -80,6 +81,8 @@ This is the Sequence Diagram of the chatbot:
 
    ```bash
    uv sync
+   # Or use the Makefile shortcut
+   make install
    ```
 
    This will automatically create a virtual environment and install all dependencies.
@@ -93,19 +96,11 @@ This is the Sequence Diagram of the chatbot:
    AWS_PROFILE="myprofile" #from ~/.aws/config
    ```
 
-3. **Install Required Packages**
-
-   Dependencies are automatically installed with `uv sync` in step 1. If you need to add new packages:
-
-   ```bash
-   uv add <package-name>
-   ```
-
-4. **Generate the MES Database**
+3. **Generate the MES Database**
 
    ```bash
    # Create tables and simulation data (auto-detects if database exists)
-   uv run python app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 14
+   uv run app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 14
    ```
 
    This will create the database file `mes.db` in the project root directory if it doesn't exist, or refresh the data if it does.
@@ -114,8 +109,29 @@ This is the Sequence Diagram of the chatbot:
 
    ```bash
    # Get help on all configuration options
-   uv run python app_factory/data_generator/sqlite-synthetic-mes-data.py --help
+   uv run app_factory/data_generator/sqlite-synthetic-mes-data.py --help
    ```
+
+4. **Set Up Daily Analysis Automation (Optional)**
+
+   Since this sample focuses daily lean meeting, you can automate the agentic data analysis by running it daily. This can be done manually, or by setting a systemd job that will run daily (Linux only). Note the comprehensive analysis can take 5m+ so it can be batched to summarize data from the previous day / shift.
+
+   ```bash
+   # Set up systemd automation for daily analysis caching (Linux only)
+   make setup-automation
+   
+   # Or run manually to test (all platforms)
+   make run-analysis
+   ```
+
+   **Note**: Automated setup requires systemd (Linux distributions like Amazon Linux 2023, Ubuntu, CentOS, etc.). macOS users can run analysis manually using `make run-analysis`.
+
+    1. **🔄 Generates Fresh Data** - Updates synthetic MES data (90 days historical, 14 days projected)
+    2. **🤖 Runs AI Analysis** - Comprehensive analysis across all production contexts
+    3. **💾 Caches Results** - Stores insights as JSON for instant retrieval
+    4. **🧹 Manages Storage** - Automatically cleans up old cache files
+
+   See [Daily Analysis Setup Guide](scripts/DAILY_ANALYSIS_SETUP.md) for detailed configuration.
 
 ## Running the Applications
 
@@ -126,6 +142,14 @@ You can run the applications independently or together:
 ```bash
 # Start the combined application
 uv run streamlit run app_factory/main.py
+# Or use the Makefile shortcut
+make start-dashboard
+```
+
+**💡 Performance Tip**: For the best experience with AI Insights, set up daily analysis caching:
+```bash
+make setup-automation  # One-time setup (Linux only)
+make run-analysis      # Generate initial cache (all platforms)
 ```
 
 ### Run Components Independently
@@ -133,6 +157,7 @@ uv run streamlit run app_factory/main.py
 ```bash
 # Run only the MES Insight Chat
 uv run streamlit run app_factory/mes_chat/chat_interface.py
+# Or: make start-chat
 
 # Run only the Daily Production Meeting
 uv run streamlit run app_factory/production_meeting/dashboard.py
@@ -145,6 +170,20 @@ The repository includes a Jupyter notebook (`text-to-sql-notebook.ipynb`) that d
 ```bash
 # Start Jupyter to access the notebook
 uv run jupyter notebook
+```
+
+### Development and Testing
+
+```bash
+# Run tests
+uv run pytest tests/
+# Or: make test
+
+# Clean up cache and temporary files
+make clean
+
+# View all available commands
+make help
 ```
 
 ## Database and Simulation
@@ -210,16 +249,51 @@ Use the configuration options to control the date ranges and data characteristic
 │   │   │   └── weekly.py        # Weekly summary dashboard
 │   │   ├── action_tracker.py    # Action item management
 │   │   ├── report.py            # Meeting report generation
-│   │   └── ai_insights.py       # AI-powered insights
+│   │   ├── ai_insights.py       # AI-powered insights
+│   │   ├── daily_analysis_scheduler.py  # Daily analysis automation
+│   │   └── analysis_cache_manager.py    # Analysis cache management
 │   ├── data_generator/          # Database generator
 │   │   ├── sqlite-synthetic-mes-data.py  # MES database generator
 │   │   └── data_pools.json      # Configuration for database generator
 │   └── data/                    # Data files
 │       ├── sample_questions.json   # Example questions
 │       └── meeting_templates.json  # Meeting templates
+├── scripts/                     # Automation scripts
+│   ├── setup_daily_analysis.py # Daily analysis setup (systemd)
+│   └── run_daily_analysis.py    # Manual analysis runner
+│   └── DAILY_ANALYSIS_SETUP.md  # Daily analysis setup guide
 ├── assets/                      # Images and media files
+├── Makefile                     # Convenient command shortcuts
 ├── mes.db                       # Generated MES database (not in repo)
 └── reports/                     # Generated reports directory (not in repo)
+```
+
+## Makefile Commands
+
+For convenience, the project includes a Makefile with shortcuts for common operations:
+
+```bash
+# View all available commands
+make help
+
+# Setup and installation
+make install              # Install dependencies
+make dev                  # Install development dependencies
+
+# Running applications
+make start-dashboard      # Start the combined Streamlit dashboard
+make start-chat          # Start only the MES Chat interface
+
+# Daily analysis system
+make run-analysis        # Generate analysis manually (all platforms)
+make setup-automation    # Set up systemd automation (Linux only)
+make check-cache         # Check analysis cache status
+make list-cache          # List available cached analyses
+make logs               # View daily analysis logs
+
+# Development
+make test               # Run tests
+make clean              # Clean up cache and temporary files
 ```
 
 ## Using the Applications
@@ -261,6 +335,8 @@ The Production Meeting dashboard includes:
 
 The dashboard updates in real-time, providing a consistent view for all stakeholders and eliminating the need for manual report preparation before meetings. This allows teams to focus on problem-solving rather than data collection and reporting.
 
+**⚡ Performance Enhancement**: The AI Insights tab supports both real-time analysis and daily cached results. Set up daily analysis automation to pre-generate comprehensive insights every morning, reducing load times from 2+ minutes to under 1 second.
+
 ![daily-lean-meetings](assets/ProductionDashboard.gif)
 
 ## AWS Configuration
@@ -290,11 +366,8 @@ Your AWS role needs these specific permissions:
 
 ### Required Model Access
 
-You must enable at least one model in Amazon Bedrock that supports **System Prompt**, **Converse API**, and **Tool use**.
+Compatible models include Anthropic Claude 4.x models, Amazon Nova, and other models that support tool use. See [Supported models and features](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html) for the full list.
 
-Compatible models include Anthropic Claude 3.x models, Amazon Nova, Mistral, etc. See [Supported models and features](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html) for the full list.
-
-To enable these models see [Add or remove access to foundation models](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access-modify.html)
 
 ## License
 

@@ -6,12 +6,12 @@ A demo implementation of intelligent agents for Manufacturing Execution System (
 
 1. **Install Dependencies**
    ```bash
-   pip install strands-sdk streamlit plotly pandas
+   uv add strands-sdk streamlit plotly pandas
    ```
 
 2. **Run the Demo**
    ```bash
-   streamlit run app_factory/mes_chat/chat_interface.py
+   uv run streamlit run app_factory/mes_chat/chat_interface.py
    ```
 
 3. **Try Agent Chat**

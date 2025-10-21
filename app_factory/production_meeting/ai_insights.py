@@ -12,17 +12,20 @@ import logging
 import time
 import plotly.express as px
 import asyncio
+from datetime import datetime
 
 from app_factory.shared.database import DatabaseManager
 from app_factory.production_meeting_agents.agent_manager import ProductionMeetingAgentManager
 from app_factory.production_meeting_agents.config import default_config
+from app_factory.production_meeting.analysis_cache_manager import AnalysisCacheManager
 
 # Configure logging for AI insights
 logger = logging.getLogger(__name__)
 
-# Initialize database manager and agent manager
+# Initialize database manager, agent manager, and cache manager
 db_manager = DatabaseManager()
 agent_manager = ProductionMeetingAgentManager(default_config)
+cache_manager = AnalysisCacheManager()
 
 
 def provide_tab_insights(tab_name, dashboard_data=None):
@@ -1166,44 +1169,122 @@ def add_conversational_analysis():
                     
                     st.plotly_chart(fig, use_container_width=True)
 
+def display_cached_analysis(analysis_data, analysis_type):
+    """Display cached analysis results"""
+    analyses = analysis_data.get('analyses', {})
+    
+    if analysis_type == "Quick Summary":
+        # Display all cached analyses in summary format
+        st.subheader("📊 Daily Production Summary (Cached)")
+        
+        # Show cache info
+        generated_at = datetime.fromisoformat(analysis_data['generated_at'])
+        st.info(f"Analysis generated: {generated_at.strftime('%Y-%m-%d %H:%M')} | "
+                f"Execution time: {analysis_data.get('total_execution_time', 0):.1f}s")
+        
+        # Display each analysis in tabs
+        if analyses:
+            tab_names = []
+            tab_data = []
+            
+            for key, analysis in analyses.items():
+                if 'analysis' in analysis:
+                    display_name = key.replace('_', ' ').title()
+                    tab_names.append(display_name)
+                    tab_data.append(analysis)
+            
+            if tab_names:
+                tabs = st.tabs(tab_names)
+                
+                for i, (tab, data) in enumerate(zip(tabs, tab_data)):
+                    with tab:
+                        st.markdown(data['analysis'])
+                        
+                        # Show follow-up suggestions if available
+                        follow_ups = data.get('follow_up_suggestions', [])
+                        if follow_ups:
+                            st.markdown("**💡 Suggested Follow-ups:**")
+                            for j, suggestion in enumerate(follow_ups[:3]):
+                                if st.button(suggestion, key=f"cached_followup_{i}_{j}"):
+                                    # Switch to conversational mode with this question
+                                    st.session_state.switch_to_chat = suggestion
+                                    st.rerun()
+        else:
+            st.warning("No cached analysis data available")
+    
+    else:
+        # For other analysis types, show specific cached data if available
+        analysis_map = {
+            "Decision Intelligence": "production_summary",
+            "Predictive Insights": "equipment_status", 
+            "Narrative Analysis": "quality_insights"
+        }
+        
+        target_analysis = analysis_map.get(analysis_type)
+        if target_analysis and target_analysis in analyses:
+            analysis = analyses[target_analysis]
+            if 'analysis' in analysis:
+                st.markdown(analysis['analysis'])
+            else:
+                st.error(f"Cached analysis failed: {analysis.get('error', 'Unknown error')}")
+        else:
+            st.warning(f"No cached data available for {analysis_type}. Please use live analysis.")
+
+
 def display_ai_insights_tab():
-    """Display the AI Insights tab in the production meeting using production meeting agents"""
+    """Display the AI Insights tab in the production meeting using cached results and live agents"""
     st.header("🤖 AI Insights & Analysis")
+    
+    # Check for chat mode switch
+    if hasattr(st.session_state, 'switch_to_chat'):
+        question = st.session_state.switch_to_chat
+        delattr(st.session_state, 'switch_to_chat')
+        
+        # Import and run chat interface with the question
+        try:
+            from app_factory.mes_chat.chat_interface import run_mes_chat
+            st.info(f"Switching to MES Chat for deeper analysis: '{question}'")
+            
+            # Initialize chat with the question
+            if "messages" not in st.session_state:
+                st.session_state.messages = [
+                    {"role": "assistant", "content": "Welcome to MES Insight Chat! I see you have a follow-up question from the daily analysis."}
+                ]
+            
+            st.session_state.messages.append({"role": "user", "content": question})
+            st.session_state["process_query"] = question
+            
+            # Run the chat interface
+            run_mes_chat()
+            return
+            
+        except ImportError as e:
+            st.error(f"Could not load MES Chat interface: {e}")
     
     col1, col2 = st.columns([3, 1])
     
     with col2:
-        # Agent settings sidebar
-        st.subheader("Agent Settings")
+        # Cache status and settings sidebar
+        st.subheader("📊 Analysis Status")
         
-        # Display agent status
-        if agent_manager.is_ready():
-            st.success("✅ Production Meeting Agents Ready")
-            agent_status = agent_manager.get_agent_status()
-            st.info(f"Model: {agent_status['config']['model']}")
+        # Display cache status
+        cache_status = cache_manager.get_cache_status()
+        
+        if cache_status['is_fresh']:
+            st.success("✅ Fresh Daily Analysis Available")
+            latest = cache_status['latest_analysis']
+            if latest:
+                st.info(f"Generated: {latest['date']}")
         else:
-            st.warning("⚠️ Agents Initializing...")
-            if st.button("Initialize Agents"):
-                try:
-                    asyncio.run(agent_manager.initialize())
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Failed to initialize agents: {e}")
+            st.warning("⚠️ No Fresh Analysis Available")
+            st.info("Using live agent analysis (slower)")
         
-        # Analysis depth control
-        analysis_depth = st.selectbox(
-            "Analysis Depth",
-            options=["Standard", "Comprehensive"],
-            index=0,
-            help="Standard for quick insights, Comprehensive for detailed analysis"
-        )
-        
-        # Meeting focus control
-        meeting_focus = st.selectbox(
-            "Meeting Focus",
-            options=["Daily", "Weekly", "Monthly"],
-            index=0,
-            help="Adjust insights based on meeting timeframe"
+        # Analysis mode selector
+        use_cached = st.radio(
+            "Analysis Mode",
+            options=["Cached (Fast)", "Live Agent (Comprehensive)"],
+            index=0 if cache_status['is_fresh'] else 1,
+            help="Cached analysis is pre-generated daily. Live analysis provides real-time insights."
         )
         
         # Analysis type selector
@@ -1219,37 +1300,107 @@ def display_ai_insights_tab():
             index=0,
         )
         
-        # Generate button
-        generate_button = st.button("Generate Insights", use_container_width=True)
+        # Settings for live analysis
+        if use_cached == "Live Agent (Comprehensive)":
+            st.divider()
+            st.subheader("Live Agent Settings")
+            
+            # Display agent status
+            if agent_manager.is_ready():
+                st.success("✅ Production Meeting Agents Ready")
+                agent_status = agent_manager.get_agent_status()
+                st.info(f"Model: {agent_status['config']['model']}")
+            else:
+                st.warning("⚠️ Agents Initializing...")
+                if st.button("Initialize Agents"):
+                    try:
+                        asyncio.run(agent_manager.initialize())
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to initialize agents: {e}")
+            
+            # Analysis depth control
+            analysis_depth = st.selectbox(
+                "Analysis Depth",
+                options=["Standard", "Comprehensive"],
+                index=0,
+                help="Standard for quick insights, Comprehensive for detailed analysis"
+            )
+            
+            # Meeting focus control
+            meeting_focus = st.selectbox(
+                "Meeting Focus",
+                options=["Daily", "Weekly", "Monthly"],
+                index=0,
+                help="Adjust insights based on meeting timeframe"
+            )
         
-        # Set agent context based on settings
-        if generate_button:
+        # Generate button
+        if use_cached == "Cached (Fast)":
+            generate_button = st.button("Load Cached Analysis", use_container_width=True)
+        else:
+            generate_button = st.button("Generate Live Analysis", use_container_width=True)
+        
+        # MES Chat integration
+        st.divider()
+        st.subheader("🔍 Deep Dive Analysis")
+        st.markdown("For follow-up questions and deeper analysis:")
+        
+        if st.button("Open MES Chat", use_container_width=True):
+            # Switch to chat mode
+            st.session_state.switch_to_chat = "I'd like to dive deeper into the production analysis"
+            st.rerun()
+        
+        # Cache management
+        st.divider()
+        with st.expander("🗂️ Cache Management"):
+            st.write(f"Cache size: {cache_status['cache_size_mb']} MB")
+            st.write(f"Available analyses: {cache_status['available_analyses']}")
+            
+            if st.button("Refresh Cache Status"):
+                st.rerun()
+        
+        # Set agent context for live analysis
+        if use_cached == "Live Agent (Comprehensive)" and generate_button:
             agent_manager.set_meeting_context(
                 meeting_type=meeting_focus.lower(),
                 focus_areas=['production', 'quality', 'equipment', 'inventory']
             )
     
     with col1:
-        # Initialize various analysis session states
-        for key in ["summary_insights", "decision_insights", "predictive_insights", "narrative_insights"]:
-            if key not in st.session_state:
-                st.session_state[key] = False
-        
-        # Determine which analysis to display based on selection and button click
+        # Handle analysis generation
         if generate_button:
-            if analysis_type == "Quick Summary":
-                st.session_state.current_analysis = "summary"
-            elif analysis_type == "Decision Intelligence":
-                st.session_state.current_analysis = "decision"
-            elif analysis_type == "Predictive Insights":
-                st.session_state.current_analysis = "predictive"
-            elif analysis_type == "Narrative Analysis":
-                st.session_state.current_analysis = "narrative"
-            elif analysis_type == "Conversational Q&A":
-                st.session_state.current_analysis = "conversational"
+            if use_cached == "Cached (Fast)":
+                # Load and display cached analysis
+                cached_analysis = cache_manager.get_latest_analysis(max_age_hours=24)
+                
+                if cached_analysis:
+                    display_cached_analysis(cached_analysis, analysis_type)
+                else:
+                    st.error("No cached analysis available. Please use Live Agent analysis or run the daily scheduler.")
+                    st.info("To generate daily cache, run: `uv run python scripts/run_daily_analysis.py` or `make run-analysis`")
+            
+            else:
+                # Use live agent analysis (original functionality)
+                # Initialize various analysis session states
+                for key in ["summary_insights", "decision_insights", "predictive_insights", "narrative_insights"]:
+                    if key not in st.session_state:
+                        st.session_state[key] = False
+                
+                # Determine which analysis to display
+                if analysis_type == "Quick Summary":
+                    st.session_state.current_analysis = "summary"
+                elif analysis_type == "Decision Intelligence":
+                    st.session_state.current_analysis = "decision"
+                elif analysis_type == "Predictive Insights":
+                    st.session_state.current_analysis = "predictive"
+                elif analysis_type == "Narrative Analysis":
+                    st.session_state.current_analysis = "narrative"
+                elif analysis_type == "Conversational Q&A":
+                    st.session_state.current_analysis = "conversational"
         
-        # Display the appropriate analysis based on state
-        if hasattr(st.session_state, 'current_analysis'):
+        # Display the appropriate analysis based on state (for live analysis)
+        if hasattr(st.session_state, 'current_analysis') and use_cached == "Live Agent (Comprehensive)":
             if st.session_state.current_analysis == "summary":
                 # Use agent manager for summary generation
                 summary = generate_ai_insight("summary", include_historical=(analysis_depth == "Comprehensive"))
@@ -1282,8 +1433,29 @@ def display_ai_insights_tab():
             
             elif st.session_state.current_analysis == "conversational":
                 add_conversational_analysis()
-        else:
-            st.info("Select an analysis type and click 'Generate Insights' to get started")
+        
+        elif not generate_button:
+            # Show initial state
+            st.info("Select an analysis mode and click the generate button to get started")
+            
+            # Show preview of available cached data
+            if cache_status['is_fresh']:
+                st.subheader("📋 Available Cached Analysis")
+                cached_analysis = cache_manager.get_latest_analysis()
+                if cached_analysis:
+                    analyses = cached_analysis.get('analyses', {})
+                    for name, data in analyses.items():
+                        if 'analysis' in data:
+                            display_name = name.replace('_', ' ').title()
+                            with st.expander(f"Preview: {display_name}"):
+                                # Show first 200 characters
+                                preview = data['analysis'][:200] + "..." if len(data['analysis']) > 200 else data['analysis']
+                                st.write(preview)
+                                st.info(f"Generated: {data.get('generated_at', 'Unknown')}")
+            else:
+                st.info("💡 **Tip**: Run the daily analysis scheduler to enable fast cached insights!")
+                st.code("uv run python scripts/run_daily_analysis.py")
+                st.info("Or use the shortcut: `make run-analysis`")
 
 
 

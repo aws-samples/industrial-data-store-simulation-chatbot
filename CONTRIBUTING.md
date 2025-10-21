@@ -49,7 +49,7 @@ This project uses `uv` for Python package management. Follow these steps to set 
 
 4. **Generate sample data:**
    ```bash
-   uv run python app_factory/data_generator/sqlite-synthetic-mes-data.py
+   uv run app_factory/data_generator/sqlite-synthetic-mes-data.py
    ```
 
 5. **Start Jupyter notebook (if needed):**
