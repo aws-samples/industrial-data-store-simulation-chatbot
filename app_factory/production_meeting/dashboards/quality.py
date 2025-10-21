@@ -9,11 +9,75 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-from shared.database import DatabaseManager
+from app_factory.shared.database import DatabaseManager
 from ..ai_insights import generate_ai_insight
 
 # Initialize database manager
 db_manager = DatabaseManager()
+
+# Import shared color configuration
+from .color_config import (
+    STREAMLIT_COLORS, QUALITY_COLORS, COLOR_SCALES,
+    get_chart_template, apply_theme_compatibility
+)
+
+def create_enhanced_quality_chart(df, chart_type, x_col, y_col, title, color_col=None):
+    """Create enhanced quality charts with better formatting and Streamlit colors"""
+    if chart_type == 'bar':
+        if color_col:
+            fig = px.bar(
+                df,
+                x=x_col,
+                y=y_col,
+                color=color_col,
+                title=title,
+                color_continuous_scale=COLOR_SCALES['reds'],
+                text=y_col
+            )
+        else:
+            fig = px.bar(
+                df,
+                x=x_col,
+                y=y_col,
+                title=title,
+                color_discrete_sequence=STREAMLIT_COLORS
+            )
+            
+        fig.update_traces(
+            texttemplate='%{text}',
+            textposition='outside'
+        )
+        
+    elif chart_type == 'horizontal_bar':
+        fig = px.bar(
+            df,
+            y=x_col,
+            x=y_col,
+            orientation='h',
+            color=color_col if color_col else None,
+            title=title,
+            color_continuous_scale=COLOR_SCALES['reds'] if color_col else None,
+            color_discrete_sequence=STREAMLIT_COLORS if not color_col else None
+        )
+        
+        fig.update_layout(yaxis={'categoryorder':'total ascending'})
+        
+    # Apply consistent formatting
+    fig.update_layout(
+        template="plotly_white",
+        height=400,
+        title=dict(font=dict(size=16)),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        hovermode='closest'
+    )
+    
+    return fig
 
 def quality_dashboard():
     """Display the quality dashboard optimized for daily production meetings"""
@@ -140,20 +204,27 @@ def quality_dashboard():
                 with col1:
                     st.markdown("#### 🚨 Top Defect Types")
                     
-                    # Create a horizontal bar chart of defect types
-                    fig1 = px.bar(
-                        defects_df,
-                        y='DefectType',
-                        x='DefectCount',
-                        orientation='h',
-                        color='AvgSeverity',
+                    # Create enhanced horizontal bar chart of defect types
+                    fig1 = create_enhanced_quality_chart(
+                        df=defects_df,
+                        chart_type='horizontal_bar',
+                        x_col='DefectType',
+                        y_col='DefectCount',
                         title='Yesterday\'s Top Defect Types',
-                        labels={
-                            'DefectCount': 'Number of Occurrences',
-                            'DefectType': 'Defect Type',
-                            'AvgSeverity': 'Avg Severity (1-5)'
-                        },
-                        color_continuous_scale='Reds'
+                        color_col='AvgSeverity'
+                    )
+                    
+                    # Add severity indicators
+                    fig1.update_traces(
+                        texttemplate='%{x}',
+                        textposition='outside',
+                        hovertemplate='<b>%{y}</b><br>Count: %{x}<br>Avg Severity: %{marker.color:.1f}<extra></extra>'
+                    )
+                    
+                    fig1.update_layout(
+                        xaxis_title='Number of Occurrences',
+                        yaxis_title='Defect Type',
+                        coloraxis_colorbar=dict(title='Avg Severity (1-5)')
                     )
                     
                     st.plotly_chart(fig1, use_container_width=True)
@@ -190,19 +261,23 @@ def quality_dashboard():
                         
                         products_df = pd.DataFrame(product_result["rows"])
                         
-                        # Create a bar chart of problem products
-                        fig2 = px.bar(
-                            products_df,
-                            x='ProductName',
-                            y='DefectCount',
-                            color='AvgDefectRate',
+                        # Create enhanced bar chart of problem products
+                        fig2 = create_enhanced_quality_chart(
+                            df=products_df,
+                            chart_type='bar',
+                            x_col='ProductName',
+                            y_col='DefectCount',
                             title='Yesterday\'s Problem Products',
-                            labels={
-                                'ProductName': 'Product',
-                                'DefectCount': 'Number of Defects',
-                                'AvgDefectRate': 'Defect Rate (%)'
-                            },
-                            color_continuous_scale='Reds'
+                            color_col='AvgDefectRate'
+                        )
+                        
+                        fig2.update_traces(
+                            hovertemplate='<b>%{x}</b><br>Defects: %{y}<br>Defect Rate: %{marker.color:.1f}%<extra></extra>'
+                        )
+                        
+                        fig2.update_layout(
+                            xaxis=dict(tickangle=-45),
+                            coloraxis_colorbar=dict(title='Defect Rate (%)')
                         )
                         
                         st.plotly_chart(fig2, use_container_width=True)
@@ -315,18 +390,19 @@ def quality_dashboard():
                 # Convert to datetime for better display
                 trend_df['InspectionDate'] = pd.to_datetime(trend_df['InspectionDate'])
                 
-                # Create line chart for quality metrics trend
+                # Create enhanced quality metrics trend chart
                 fig3 = go.Figure()
                 
-                # Add defect rate line
+                # Add defect rate line with Streamlit colors
                 fig3.add_trace(
                     go.Scatter(
                         x=trend_df['InspectionDate'],
                         y=trend_df['AvgDefectRate'],
                         name='Defect Rate',
                         mode='lines+markers',
-                        line=dict(color='red', width=2),
-                        marker=dict(size=6)
+                        line=dict(color=STREAMLIT_COLORS[0], width=3),  # Red
+                        marker=dict(size=8),
+                        hovertemplate='<b>Defect Rate</b><br>Date: %{x}<br>Rate: %{y:.2f}%<extra></extra>'
                     )
                 )
                 
@@ -337,38 +413,47 @@ def quality_dashboard():
                         y=trend_df['AvgYieldRate'],
                         name='Yield Rate',
                         mode='lines+markers',
-                        line=dict(color='green', width=2),
-                        marker=dict(size=6),
-                        yaxis='y2'
+                        line=dict(color=STREAMLIT_COLORS[3], width=3),  # Green
+                        marker=dict(size=8),
+                        yaxis='y2',
+                        hovertemplate='<b>Yield Rate</b><br>Date: %{x}<br>Rate: %{y:.2f}%<extra></extra>'
                     )
                 )
                 
-                # Add inspection count as bar chart
+                # Add inspection count as bar chart with transparency
                 fig3.add_trace(
                     go.Bar(
                         x=trend_df['InspectionDate'],
                         y=trend_df['InspectionCount'],
-                        name='# Inspections',
-                        marker_color='lightblue',
-                        opacity=0.5,
-                        yaxis='y3'
+                        name='Inspections',
+                        marker_color=STREAMLIT_COLORS[2],  # Blue
+                        opacity=0.3,
+                        yaxis='y3',
+                        hovertemplate='<b>Inspections</b><br>Date: %{x}<br>Count: %{y}<extra></extra>'
                     )
                 )
                 
-                # Add target lines
+                # Add target lines with annotations
                 fig3.add_shape(
                     type="line",
                     x0=trend_df['InspectionDate'].min(),
                     x1=trend_df['InspectionDate'].max(),
                     y0=3,  # Target defect rate
                     y1=3,
-                    line=dict(color="red", width=1, dash="dash"),
-                    name="Target Defect Rate"
+                    line=dict(color="red", width=2, dash="dash")
                 )
                 
-                # Update layout with multiple y-axes
+                fig3.add_annotation(
+                    x=trend_df['InspectionDate'].iloc[-1],
+                    y=3.2,
+                    text="Target: 3%",
+                    showarrow=False,
+                    font=dict(color="red", size=12)
+                )
+                
+                # Enhanced layout with multiple y-axes
                 fig3.update_layout(
-                    title='Quality Metrics - Last 30 Days',
+                    title=dict(text='Quality Metrics Trend - Last 30 Days', font=dict(size=16)),
                     xaxis=dict(title='Date'),
                     yaxis=dict(
                         title='Defect Rate (%)',
@@ -382,13 +467,15 @@ def quality_dashboard():
                         range=[min(90, trend_df['AvgYieldRate'].min() * 0.9), 100]
                     ),
                     yaxis3=dict(
-                        title='# Inspections',
+                        title='Inspections',
                         side='right',
                         overlaying='y',
-                        position=.85,
+                        position=0.85,
                         anchor='free',
                         range=[0, trend_df['InspectionCount'].max() * 1.2]
                     ),
+                    template="plotly_white",
+                    height=450,
                     legend=dict(
                         orientation="h",
                         yanchor="bottom",

@@ -9,10 +9,131 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
 
-from shared.database import DatabaseManager
+from app_factory.shared.database import DatabaseManager
 
 # Initialize database manager
 db_manager = DatabaseManager()
+
+# Import shared color configuration
+from .color_config import (
+    STREAMLIT_COLORS, STATUS_COLORS, PERFORMANCE_COLORS, COLOR_SCALES,
+    get_performance_color, get_status_color_map, get_chart_template, apply_theme_compatibility
+)
+
+def get_oee_color(oee_value):
+    """Get color based on OEE value using Streamlit color scheme"""
+    return get_performance_color(oee_value, {'excellent': 85, 'good': 70, 'fair': 50})
+
+def create_enhanced_gauge(value, title, target=85, max_value=100):
+    """Create an enhanced gauge chart with better formatting"""
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=value,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': title, 'font': {'size': 16}},
+        delta={'reference': target, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+        gauge={
+            'axis': {'range': [0, max_value], 'tickwidth': 1, 'tickcolor': "darkblue"},
+            'bar': {'color': get_oee_color(value), 'thickness': 0.3},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 60], 'color': '#ffcccc'},  # Light red
+                {'range': [60, 85], 'color': '#ffffcc'},  # Light yellow
+                {'range': [85, 100], 'color': '#ccffcc'}  # Light green
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': target
+            }
+        }
+    ))
+    
+    fig.update_layout(
+        height=300,
+        margin=dict(l=20, r=20, t=60, b=20),
+        font={'color': "darkblue", 'family': "Arial"}
+    )
+    
+    return apply_theme_compatibility(fig)
+
+def create_enhanced_trend_chart(df, x_col, y_cols, title, colors=None):
+    """Create an enhanced trend chart with better formatting and colors"""
+    if colors is None:
+        colors = STREAMLIT_COLORS
+    
+    fig = go.Figure()
+    
+    for i, y_col in enumerate(y_cols):
+        fig.add_trace(go.Scatter(
+            x=df[x_col],
+            y=df[y_col],
+            name=y_col.replace('Avg', '').replace('_', ' ').title(),
+            line=dict(color=colors[i % len(colors)], width=3),
+            mode='lines+markers',
+            marker=dict(size=6),
+            hovertemplate=f'<b>{y_col}</b><br>Date: %{{x}}<br>Value: %{{y:.1f}}%<extra></extra>'
+        ))
+    
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16)),
+        xaxis_title='Date',
+        yaxis_title='Percentage (%)',
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        template="plotly_white",
+        height=400
+    )
+    
+    return apply_theme_compatibility(fig)
+
+def create_enhanced_bar_chart(df, x_col, y_cols, title, colors=None, show_values=True):
+    """Create an enhanced bar chart with better formatting"""
+    if colors is None:
+        colors = STREAMLIT_COLORS
+    
+    if isinstance(y_cols, str):
+        y_cols = [y_cols]
+    
+    fig = go.Figure()
+    
+    for i, y_col in enumerate(y_cols):
+        fig.add_trace(go.Bar(
+            name=y_col.replace('_', ' ').title(),
+            x=df[x_col],
+            y=df[y_col],
+            marker_color=colors[i % len(colors)],
+            text=df[y_col] if show_values else None,
+            texttemplate='%{text:.0f}' if show_values else None,
+            textposition='outside' if show_values else None,
+            hovertemplate=f'<b>{y_col}</b><br>{x_col}: %{{x}}<br>Value: %{{y:,.0f}}<extra></extra>'
+        ))
+    
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=16)),
+        xaxis_title=x_col.replace('_', ' ').title(),
+        yaxis_title='Value',
+        barmode='group' if len(y_cols) > 1 else 'relative',
+        template="plotly_white",
+        height=400,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom", 
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    return apply_theme_compatibility(fig)
 
 def production_summary_dashboard():
     """Display the enhanced production summary dashboard for daily production meetings"""
@@ -68,19 +189,41 @@ def display_daily_overview():
             # Show production by product
             st.subheader("Production by Product")
             
-            # Create visualization
+            # Create enhanced production visualization
             fig = px.bar(
                 yesterday_data, 
                 x='ProductName', 
                 y=['PlannedQuantity', 'ActualProduction', 'ScrapQuantity'],
                 barmode='group',
-                title='Planned vs Actual Production',
+                title='Yesterday\'s Production Performance by Product',
                 labels={'value': 'Units', 'variable': 'Metric', 'ProductName': 'Product'},
                 color_discrete_map={
-                    'PlannedQuantity': '#636EFA',
-                    'ActualProduction': '#00CC96',
-                    'ScrapQuantity': '#EF553B'
+                    'PlannedQuantity': STREAMLIT_COLORS[2],  # Blue
+                    'ActualProduction': STREAMLIT_COLORS[3], # Green
+                    'ScrapQuantity': STREAMLIT_COLORS[0]     # Red
                 }
+            )
+            
+            # Enhanced formatting
+            fig.update_layout(
+                template="plotly_white",
+                height=400,
+                title=dict(font=dict(size=16)),
+                xaxis=dict(tickangle=-45),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                hovermode='x unified'
+            )
+            
+            # Add data labels
+            fig.update_traces(
+                texttemplate='%{y:,.0f}',
+                textposition='outside'
             )
             
             st.plotly_chart(fig, use_container_width=True)
@@ -122,54 +265,79 @@ def display_daily_overview():
             # Convert date strings to datetime for better x-axis formatting
             trend_df['ProductionDate'] = pd.to_datetime(trend_df['ProductionDate'])
             
-            # Create trend visualization
+            # Create enhanced production trend visualization
             fig = go.Figure()
             
-            # Add production quantities
+            # Add production quantities with Streamlit colors
             fig.add_trace(go.Bar(
                 x=trend_df['ProductionDate'],
                 y=trend_df['PlannedQuantity'],
-                name='Planned',
-                marker_color='#636EFA'
+                name='Planned Production',
+                marker_color=STREAMLIT_COLORS[2],  # Blue
+                text=trend_df['PlannedQuantity'],
+                texttemplate='%{text:,.0f}',
+                textposition='outside',
+                hovertemplate='<b>Planned</b><br>Date: %{x}<br>Quantity: %{y:,.0f}<extra></extra>'
             ))
             
             fig.add_trace(go.Bar(
                 x=trend_df['ProductionDate'],
                 y=trend_df['ActualProduction'],
-                name='Actual',
-                marker_color='#00CC96'
+                name='Actual Production',
+                marker_color=STREAMLIT_COLORS[3],  # Green
+                text=trend_df['ActualProduction'],
+                texttemplate='%{text:,.0f}',
+                textposition='outside',
+                hovertemplate='<b>Actual</b><br>Date: %{x}<br>Quantity: %{y:,.0f}<extra></extra>'
             ))
             
             # Add completion percentage line on secondary y-axis
             fig.add_trace(go.Scatter(
                 x=trend_df['ProductionDate'],
                 y=trend_df['CompletionPercentage'],
-                name='Completion %',
-                line=dict(color='#EF553B', width=3),
+                name='Completion Rate',
+                line=dict(color=STREAMLIT_COLORS[0], width=4),  # Red
                 mode='lines+markers',
-                yaxis='y2'
+                marker=dict(size=8),
+                yaxis='y2',
+                hovertemplate='<b>Completion Rate</b><br>Date: %{x}<br>Rate: %{y:.1f}%<extra></extra>'
             ))
             
-            # Layout with secondary y-axis
+            # Enhanced layout with secondary y-axis
             fig.update_layout(
-                title='Production Trend (Last 7 Days)',
+                title=dict(text='Production Trend (Last 7 Days)', font=dict(size=16)),
                 xaxis_title='Date',
-                yaxis_title='Quantity',
+                yaxis_title='Production Quantity',
                 yaxis2=dict(
-                    title='Completion %',
+                    title='Completion Rate (%)',
                     anchor='x',
                     overlaying='y',
                     side='right',
-                    range=[0, 110]  # 0-110% range
+                    range=[0, 110],
+                    tickformat='.0f'
                 ),
                 barmode='group',
+                template="plotly_white",
+                height=450,
                 legend=dict(
                     orientation="h",
                     yanchor="bottom",
                     y=1.02,
                     xanchor="right",
                     x=1
-                )
+                ),
+                hovermode='x unified'
+            )
+            
+            # Add target completion line
+            fig.add_shape(
+                type="line",
+                x0=trend_df['ProductionDate'].min(),
+                x1=trend_df['ProductionDate'].max(),
+                y0=100,
+                y1=100,
+                line=dict(color="green", width=2, dash="dash"),
+                yref='y2'
             )
             
             st.plotly_chart(fig, use_container_width=True)
@@ -201,25 +369,37 @@ def display_daily_overview():
         col1, col2 = st.columns([1, 2])
         
         with col1:
-            # Create status pie chart
+            # Create enhanced status donut chart
             fig = px.pie(
                 work_order_status,
                 values='OrderCount',
                 names='Status',
                 title='Work Order Status Distribution',
                 color='Status',
-                color_discrete_map={
-                    'scheduled': '#636EFA',
-                    'in_progress': '#FFA15A',
-                    'completed': '#00CC96',
-                    'cancelled': '#EF553B'
-                },
-                hole=0.4
+                color_discrete_map=get_status_color_map(work_order_status['Status'].unique()),
+                hole=0.5  # Larger hole for better readability
             )
             
-            # Improve layout
-            fig.update_traces(textposition='inside', textinfo='percent+label')
-            fig.update_layout(legend=dict(orientation="h", y=-0.1))
+            # Enhanced formatting
+            fig.update_traces(
+                textposition='inside', 
+                textinfo='percent+label',
+                textfont_size=12,
+                marker=dict(line=dict(color='#FFFFFF', width=2))
+            )
+            
+            fig.update_layout(
+                legend=dict(
+                    orientation="v",
+                    yanchor="middle",
+                    y=0.5,
+                    xanchor="left",
+                    x=1.05
+                ),
+                height=350,
+                margin=dict(l=20, r=100, t=60, b=20),
+                title=dict(font=dict(size=14))
+            )
             
             st.plotly_chart(fig, use_container_width=True)
         
@@ -298,36 +478,12 @@ def display_performance_metrics():
         if result["success"] and result["row_count"] > 0:
             oee_data = result["rows"][0]
             
-            # Create gauge charts for OEE components
-            fig = go.Figure()
-            
-            # OEE Gauge
-            fig.add_trace(go.Indicator(
-                mode="gauge+number",
+            # Create enhanced gauge chart for OEE
+            fig = create_enhanced_gauge(
                 value=oee_data["AvgOEE"],
-                title={"text": "OEE"},
-                gauge={
-                    "axis": {"range": [0, 100]},
-                    "bar": {"color": get_oee_color(oee_data["AvgOEE"])},
-                    "steps": [
-                        {"range": [0, 60], "color": "#EF553B"},
-                        {"range": [60, 85], "color": "#FFA15A"},
-                        {"range": [85, 100], "color": "#00CC96"}
-                    ],
-                    "threshold": {
-                        "line": {"color": "black", "width": 2},
-                        "thickness": 0.75,
-                        "value": 85
-                    }
-                },
-                domain={"row": 0, "column": 0}
-            ))
-            
-            # Configure layout for a single gauge
-            fig.update_layout(
-                grid={"rows": 1, "columns": 1, "pattern": "independent"},
-                height=300,
-                margin=dict(t=50, b=0, l=0, r=0)
+                title="Overall Equipment Effectiveness (OEE)",
+                target=85,
+                max_value=100
             )
             
             st.plotly_chart(fig, use_container_width=True)
@@ -391,49 +547,34 @@ def display_performance_metrics():
             # Convert date strings to datetime
             oee_trend_df['MeasurementDate'] = pd.to_datetime(oee_trend_df['MeasurementDate'])
             
-            # Create line chart for OEE components
-            fig = go.Figure()
+            # Create enhanced trend chart for OEE components
+            fig = create_enhanced_trend_chart(
+                df=oee_trend_df,
+                x_col='MeasurementDate',
+                y_cols=['AvgOEE', 'AvgAvailability', 'AvgPerformance', 'AvgQuality'],
+                title='OEE Components Trend (Last 7 Days)',
+                colors=['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4']  # Streamlit colors
+            )
             
-            fig.add_trace(go.Scatter(
-                x=oee_trend_df['MeasurementDate'],
-                y=oee_trend_df['AvgOEE'],
-                name='OEE',
-                line=dict(color='#19D3F3', width=4)
-            ))
+            # Add target line at 85%
+            fig.add_shape(
+                type="line",
+                x0=oee_trend_df['MeasurementDate'].min(),
+                x1=oee_trend_df['MeasurementDate'].max(),
+                y0=85,
+                y1=85,
+                line=dict(color="red", width=2, dash="dash"),
+                name="Target (85%)"
+            )
             
-            fig.add_trace(go.Scatter(
-                x=oee_trend_df['MeasurementDate'],
-                y=oee_trend_df['AvgAvailability'],
-                name='Availability',
-                line=dict(color='#636EFA', width=2, dash='dash')
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=oee_trend_df['MeasurementDate'],
-                y=oee_trend_df['AvgPerformance'],
-                name='Performance',
-                line=dict(color='#FFA15A', width=2, dash='dash')
-            ))
-            
-            fig.add_trace(go.Scatter(
-                x=oee_trend_df['MeasurementDate'],
-                y=oee_trend_df['AvgQuality'],
-                name='Quality',
-                line=dict(color='#00CC96', width=2, dash='dash')
-            ))
-            
-            fig.update_layout(
-                title='OEE Components Trend',
-                xaxis_title='Date',
-                yaxis_title='Percentage (%)',
-                yaxis=dict(range=[0, 110]),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1
-                )
+            fig.add_annotation(
+                x=oee_trend_df['MeasurementDate'].iloc[-1],
+                y=85,
+                text="Target: 85%",
+                showarrow=True,
+                arrowhead=2,
+                arrowcolor="red",
+                font=dict(color="red")
             )
             
             st.plotly_chart(fig, use_container_width=True)

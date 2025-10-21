@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from shared.database import DatabaseManager
+from app_factory.shared.database import DatabaseManager
 
 # Initialize database manager
 db_manager = DatabaseManager()

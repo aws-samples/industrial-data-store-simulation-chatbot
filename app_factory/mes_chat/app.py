@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 
 # Import shared modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from shared.database import DatabaseManager
+from app_factory.shared.database import DatabaseManager
 # Removed bedrock_utils dependency - using simplified model management
 from mes_agents.agent_manager import MESAgentManager
 from mes_agents.config import AgentConfig

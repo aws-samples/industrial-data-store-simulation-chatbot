@@ -10,10 +10,10 @@ import sys
 import os
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
-from shared.database import DatabaseManager
+from app_factory.shared.database import DatabaseManager
 
 # Import production meeting modules
-from production_meeting.dashboards import (
+from .dashboards import (
     production_summary_dashboard,
     equipment_status_dashboard,
     quality_dashboard,
@@ -22,9 +22,9 @@ from production_meeting.dashboards import (
     weekly_overview_dashboard,
     add_root_cause_analysis,
 )
-from production_meeting.action_tracker import display_action_tracker
-from production_meeting.report import display_report_generator
-from production_meeting.ai_insights import (
+
+from .report import display_report_generator
+from .ai_insights import (
     display_ai_insights_tab, 
     provide_tab_insights,
     generate_predictive_insights,
@@ -46,7 +46,6 @@ def run_production_meeting():
     if "meeting_data" not in st.session_state:
         st.session_state.meeting_data = {
             "date": datetime.now().strftime("%Y-%m-%d"),
-            "action_items": [],
             "notes": "",
             "attendees": "",
             "meeting_status": "Not Started",  # Not Started, In Progress, Completed
@@ -125,7 +124,6 @@ def run_production_meeting():
         "👥 Productivity",
         "🔍 Root Cause Analysis", 
         "🤖 AI Insights",
-        "📋 Action Items",
         "📝 Meeting Notes",
         "📄 Reports"
     ])
@@ -133,30 +131,146 @@ def run_production_meeting():
     # Tab 1: Production Summary
     with tabs[0]:
         production_summary_dashboard()
-        provide_tab_insights("production")
+        if st.session_state.enable_tab_insights:
+            st.markdown("---")
+            st.subheader("🤖 AI Insights")
+            
+            # Create columns for button and loading state
+            button_col, status_col = st.columns([1, 3])
+            
+            with button_col:
+                if st.button("Generate Insights", key="production_insights_btn", type="primary"):
+                    with status_col:
+                        with st.spinner("Generating production insights..."):
+                            insights = provide_tab_insights("production")
+                            if insights:
+                                st.session_state.production_insights = insights
+                            else:
+                                st.session_state.production_insights = "Unable to generate insights at this time."
+            
+            # Display cached insights if available
+            if hasattr(st.session_state, 'production_insights'):
+                st.markdown(st.session_state.production_insights)
     
     # Tab 2: Equipment Status
     with tabs[1]:
         equipment_status_dashboard()
-        provide_tab_insights("machines")
+        if st.session_state.enable_tab_insights:
+            st.markdown("---")
+            st.subheader("🤖 AI Insights")
+            
+            # Create columns for button and loading state
+            button_col, status_col = st.columns([1, 3])
+            
+            with button_col:
+                if st.button("Generate Insights", key="equipment_insights_btn", type="primary"):
+                    with status_col:
+                        with st.spinner("Generating equipment insights..."):
+                            insights = provide_tab_insights("equipment")
+                            if insights:
+                                st.session_state.equipment_insights = insights
+                            else:
+                                st.session_state.equipment_insights = "Unable to generate insights at this time."
+            
+            # Display cached insights if available
+            if hasattr(st.session_state, 'equipment_insights'):
+                st.markdown(st.session_state.equipment_insights)
     
     # Tab 3: Quality Issues
     with tabs[2]:
         quality_dashboard()
-        provide_tab_insights("quality")
+        if st.session_state.enable_tab_insights:
+            st.markdown("---")
+            st.subheader("🤖 AI Insights")
+            
+            # Create columns for button and loading state
+            button_col, status_col = st.columns([1, 3])
+            
+            with button_col:
+                if st.button("Generate Insights", key="quality_insights_btn", type="primary"):
+                    with status_col:
+                        with st.spinner("Generating quality insights..."):
+                            insights = provide_tab_insights("quality")
+                            if insights:
+                                st.session_state.quality_insights = insights
+                            else:
+                                st.session_state.quality_insights = "Unable to generate insights at this time."
+            
+            # Display cached insights if available
+            if hasattr(st.session_state, 'quality_insights'):
+                st.markdown(st.session_state.quality_insights)
     
     # Tab 4: Inventory Alerts
     with tabs[3]:
         inventory_dashboard()
-        provide_tab_insights("inventory")
+        if st.session_state.enable_tab_insights:
+            st.markdown("---")
+            st.subheader("🤖 AI Insights")
+            
+            # Create columns for button and loading state
+            button_col, status_col = st.columns([1, 3])
+            
+            with button_col:
+                if st.button("Generate Insights", key="inventory_insights_btn", type="primary"):
+                    with status_col:
+                        with st.spinner("Generating inventory insights..."):
+                            insights = provide_tab_insights("inventory")
+                            if insights:
+                                st.session_state.inventory_insights = insights
+                            else:
+                                st.session_state.inventory_insights = "Unable to generate insights at this time."
+            
+            # Display cached insights if available
+            if hasattr(st.session_state, 'inventory_insights'):
+                st.markdown(st.session_state.inventory_insights)
     
     # Tab 5: Productivity
     with tabs[4]:
         productivity_dashboard()
+        if st.session_state.enable_tab_insights:
+            st.markdown("---")
+            st.subheader("🤖 AI Insights")
+            
+            # Create columns for button and loading state
+            button_col, status_col = st.columns([1, 3])
+            
+            with button_col:
+                if st.button("Generate Insights", key="productivity_insights_btn", type="primary"):
+                    with status_col:
+                        with st.spinner("Generating productivity insights..."):
+                            insights = provide_tab_insights("productivity")
+                            if insights:
+                                st.session_state.productivity_insights = insights
+                            else:
+                                st.session_state.productivity_insights = "Unable to generate insights at this time."
+            
+            # Display cached insights if available
+            if hasattr(st.session_state, 'productivity_insights'):
+                st.markdown(st.session_state.productivity_insights)
     
     # Tab 6: Root Cause Analysis
     with tabs[5]:
         add_root_cause_analysis()
+        if st.session_state.enable_tab_insights:
+            st.markdown("---")
+            st.subheader("🤖 AI Insights")
+            
+            # Create columns for button and loading state
+            button_col, status_col = st.columns([1, 3])
+            
+            with button_col:
+                if st.button("Generate Insights", key="root_cause_insights_btn", type="primary"):
+                    with status_col:
+                        with st.spinner("Generating root cause insights..."):
+                            insights = provide_tab_insights("root_cause")
+                            if insights:
+                                st.session_state.root_cause_insights = insights
+                            else:
+                                st.session_state.root_cause_insights = "Unable to generate insights at this time."
+            
+            # Display cached insights if available
+            if hasattr(st.session_state, 'root_cause_insights'):
+                st.markdown(st.session_state.root_cause_insights)
     
     # Tab 7: AI Insights - Enhanced with structured selection options
     with tabs[6]:
@@ -184,12 +298,8 @@ def run_production_meeting():
         else:  # Conversational Q&A
             add_conversational_analysis()
     
-    # Tab 8: Action Items
+    # Tab 8: Meeting Notes
     with tabs[7]:
-        display_action_tracker(st.session_state.meeting_data["date"])
-    
-    # Tab 9: Meeting Notes
-    with tabs[8]:
         st.header("📝 Meeting Notes")
         
         # Meeting notes input
@@ -205,8 +315,8 @@ def run_production_meeting():
         with st.expander("Weekly Performance Overview", expanded=False):
             weekly_overview_dashboard()
     
-    # Tab 10: Reports
-    with tabs[9]:
+    # Tab 9: Reports
+    with tabs[8]:
         report_options = st.radio(
             "Report Type:",
             options=["Standard Report", "AI-Enhanced Executive Summary"],

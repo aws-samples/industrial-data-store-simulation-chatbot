@@ -8,10 +8,51 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-from shared.database import DatabaseManager
+from app_factory.shared.database import DatabaseManager
 
 # Initialize database manager
 db_manager = DatabaseManager()
+
+# Import shared color configuration
+from .color_config import (
+    STREAMLIT_COLORS, STATUS_COLORS, get_performance_color,
+    get_status_color_map, apply_theme_compatibility
+)
+
+def create_enhanced_equipment_gauge(availability_pct, title="Machine Availability"):
+    """Create enhanced gauge for equipment availability"""
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number+delta",
+        value=availability_pct,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': title, 'font': {'size': 16}},
+        delta={'reference': 85, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+        gauge={
+            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+            'bar': {'color': get_performance_color(availability_pct), 'thickness': 0.3},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 50], 'color': '#ffcccc'},   # Light red
+                {'range': [50, 80], 'color': '#ffffcc'},  # Light yellow
+                {'range': [80, 100], 'color': '#ccffcc'}  # Light green
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'thickness': 0.75,
+                'value': 85
+            }
+        }
+    ))
+    
+    fig.update_layout(
+        height=350,
+        margin=dict(l=20, r=20, t=60, b=20),
+        font={'color': "darkblue", 'family': "Arial"}
+    )
+    
+    return fig
 
 def equipment_status_dashboard():
     """Display the enhanced equipment status dashboard"""
@@ -34,27 +75,11 @@ def equipment_status_dashboard():
             
             availability = running_machines / total_machines * 100 if total_machines > 0 else 0
             
-            # Create gauge chart for availability
-            fig = go.Figure(go.Indicator(
-                mode = "gauge+number",
-                value = availability,
-                domain = {'x': [0, 1], 'y': [0, 1]},
-                title = {'text': "Machine Availability"},
-                gauge = {
-                    'axis': {'range': [0, 100]},
-                    'bar': {'color': "green"},
-                    'steps': [
-                        {'range': [0, 50], 'color': "red"},
-                        {'range': [50, 80], 'color': "orange"},
-                        {'range': [80, 100], 'color': "lightgreen"}
-                    ],
-                    'threshold': {
-                        'line': {'color': "black", 'width': 4},
-                        'thickness': 0.75,
-                        'value': 85
-                    }
-                }
-            ))
+            # Create enhanced gauge chart for availability
+            fig = create_enhanced_equipment_gauge(
+                availability_pct=availability,
+                title="Overall Machine Availability"
+            )
             
             st.plotly_chart(fig, use_container_width=True)
             
@@ -70,12 +95,30 @@ def equipment_status_dashboard():
                 names='Status',
                 title='Machine Status Distribution',
                 color='Status',
-                color_discrete_map={
-                    'Running': 'green',
-                    'Idle': 'blue',
-                    'Maintenance': 'orange',
-                    'Breakdown': 'red'
-                }
+                color_discrete_map=get_status_color_map(['Running', 'Idle', 'Maintenance', 'Breakdown']),
+                hole=0.4  # Donut chart for better readability
+            )
+            
+            # Enhanced formatting
+            fig.update_traces(
+                textposition='inside', 
+                textinfo='percent+label',
+                textfont_size=12,
+                marker=dict(line=dict(color='#FFFFFF', width=2))
+            )
+            
+            fig.update_layout(
+                template="plotly_white",
+                height=350,
+                title=dict(font=dict(size=14)),
+                legend=dict(
+                    orientation="v",
+                    yanchor="middle",
+                    y=0.5,
+                    xanchor="left",
+                    x=1.05
+                ),
+                margin=dict(l=20, r=100, t=60, b=20)
             )
             st.plotly_chart(fig, use_container_width=True)
         
@@ -90,24 +133,75 @@ def equipment_status_dashboard():
                 title='Average Efficiency by Machine Type',
                 labels={'AvgEfficiency': 'Efficiency (%)', 'MachineType': 'Machine Type'},
                 color='AvgEfficiency',
-                color_continuous_scale='RdYlGn'
+                color_continuous_scale='RdYlGn',
+                text='AvgEfficiency'
             )
-            fig.update_layout(coloraxis_colorbar=dict(title='Efficiency (%)'))
+            
+            # Enhanced formatting
+            fig.update_traces(
+                texttemplate='%{text:.1f}%',
+                textposition='outside'
+            )
+            
+            fig.update_layout(
+                template="plotly_white",
+                height=400,
+                title=dict(font=dict(size=16)),
+                coloraxis_colorbar=dict(title='Efficiency (%)'),
+                xaxis=dict(tickangle=-45),
+                hovermode='x'
+            )
+            
+            # Add target line at 85%
+            fig.add_shape(
+                type="line",
+                x0=-0.5,
+                x1=len(machine_status)-0.5,
+                y0=85,
+                y1=85,
+                line=dict(color="red", width=2, dash="dash")
+            )
+            
+            fig.add_annotation(
+                x=len(machine_status)/2,
+                y=87,
+                text="Target: 85%",
+                showarrow=False,
+                font=dict(color="red", size=12)
+            )
+            
             st.plotly_chart(fig, use_container_width=True)
             
-            # Stacked bar chart of machine status by type
+            # Enhanced stacked bar chart of machine status by type
             fig = px.bar(
                 machine_status,
                 x='MachineType',
                 y=['Running', 'Idle', 'Maintenance', 'Breakdown'],
-                title='Machine Status by Type',
+                title='Machine Status Distribution by Type',
                 labels={'value': 'Number of Machines', 'variable': 'Status', 'MachineType': 'Machine Type'},
-                color_discrete_map={
-                    'Running': 'green',
-                    'Idle': 'blue',
-                    'Maintenance': 'orange',
-                    'Breakdown': 'red'
-                }
+                color_discrete_map=get_status_color_map(['Running', 'Idle', 'Maintenance', 'Breakdown'])
+            )
+            
+            # Enhanced formatting
+            fig.update_layout(
+                template="plotly_white",
+                height=400,
+                title=dict(font=dict(size=16)),
+                xaxis=dict(tickangle=-45),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                hovermode='x unified'
+            )
+            
+            # Add data labels for better readability
+            fig.update_traces(
+                texttemplate='%{y}',
+                textposition='inside'
             )
             st.plotly_chart(fig, use_container_width=True)
     else:

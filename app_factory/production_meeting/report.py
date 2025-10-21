@@ -9,7 +9,7 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from shared.database import DatabaseManager
+from app_factory.shared.database import DatabaseManager
 
 # Initialize database manager
 db_manager = DatabaseManager()
@@ -161,16 +161,7 @@ class ReportGenerator:
 - {inventory_alert_count} inventory items below reorder level
 """
         
-        # Add action items
-        if meeting_data.get('action_items'):
-            summary += """
-## Action Items
-"""
-            
-            for item in meeting_data['action_items']:
-                summary += f"""
-- {item['description']} (Owner: {item['owner']}, Due: {item['due_date']}, Status: {item['status']})
-"""
+
         
         # Add notes
         if meeting_data.get('notes'):
@@ -548,13 +539,7 @@ def display_report_generator(meeting_date=None, meeting_data=None):
                         st.subheader("Meeting Notes")
                         st.write(report_data['notes'])
                     
-                    if report_data.get('action_items'):
-                        st.subheader("Action Items")
-                        for item in report_data['action_items']:
-                            st.markdown(f"""
-                            **{item['description']}**  
-                            Owner: {item['owner']} | Priority: {item['priority']} | Due: {item['due_date']} | Status: {item['status']}
-                            """)
+
                     
                     # Generate summary option
                     if st.button("Generate Summary from this Report"):
@@ -586,25 +571,7 @@ if __name__ == "__main__":
         "date": datetime.now().strftime("%Y-%m-%d"),
         "attendees": "John Smith, Jane Doe, Bob Johnson",
         "meeting_status": "Completed",
-        "notes": "This is a test meeting with sample notes.\n\n- Discussed production issues\n- Reviewed quality metrics\n- Assigned action items",
-        "action_items": [
-            {
-                "id": 1,
-                "description": "Investigate machine downtime",
-                "owner": "John Smith",
-                "priority": "High",
-                "due_date": (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d"),
-                "status": "Open"
-            },
-            {
-                "id": 2,
-                "description": "Order replacement parts",
-                "owner": "Jane Doe",
-                "priority": "Medium",
-                "due_date": (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d"),
-                "status": "In Progress"
-            }
-        ]
+        "notes": "This is a test meeting with sample notes.\n\n- Discussed production issues\n- Reviewed quality metrics\n- Reviewed meeting outcomes"
     }
     
     display_report_generator(test_meeting_data["date"], test_meeting_data)

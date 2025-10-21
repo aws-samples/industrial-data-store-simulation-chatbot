@@ -12,8 +12,8 @@ from pathlib import Path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import the app modules
-from mes_chat.app import run_mes_chat
-from production_meeting.app import run_production_meeting
+from mes_chat.chat_interface import run_mes_chat
+from production_meeting.dashboard import run_production_meeting
 
 # Page configuration
 st.set_page_config(
@@ -61,7 +61,7 @@ def main():
         st.subheader("📊 Daily Production Meeting")
         st.write("""
         Structured interface for daily lean meetings with production KPIs, issue tracking, 
-        action items, and performance metrics focused on today's operations.
+        and performance metrics focused on today's operations.
         
         **Use this when:** Running daily stand-up meetings, shift handovers, 
         or production status reviews.

@@ -9,10 +9,62 @@ import plotly.graph_objects as go
 import numpy as np
 from datetime import datetime, timedelta
 
-from shared.database import DatabaseManager
+from app_factory.shared.database import DatabaseManager
 
 # Initialize database manager
 db_manager = DatabaseManager()
+
+# Import shared color configuration
+from .color_config import (
+    STREAMLIT_COLORS, PRIORITY_COLORS, apply_theme_compatibility
+)
+
+def create_enhanced_inventory_chart(df, x_col, y_cols, title, chart_type='bar'):
+    """Create enhanced inventory charts with better formatting"""
+    if chart_type == 'bar' and isinstance(y_cols, list):
+        fig = px.bar(
+            df,
+            x=x_col,
+            y=y_cols,
+            barmode='group',
+            title=title,
+            color_discrete_sequence=STREAMLIT_COLORS
+        )
+        
+        # Add data labels
+        fig.update_traces(
+            texttemplate='%{y:,.0f}',
+            textposition='outside'
+        )
+        
+    elif chart_type == 'horizontal_bar':
+        fig = px.bar(
+            df,
+            y=x_col,
+            x=y_cols[0] if isinstance(y_cols, list) else y_cols,
+            orientation='h',
+            title=title,
+            color_discrete_sequence=STREAMLIT_COLORS
+        )
+        
+        fig.update_layout(yaxis={'categoryorder':'total ascending'})
+        
+    # Apply consistent formatting
+    fig.update_layout(
+        template="plotly_white",
+        height=400,
+        title=dict(font=dict(size=16)),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        hovermode='closest'
+    )
+    
+    return fig
 
 def inventory_dashboard():
     """Display the enhanced inventory dashboard"""
@@ -76,39 +128,40 @@ def inventory_dashboard():
         # Sort by shortage amount
         critical_items_df = inventory_alerts.sort_values('ShortageAmount', ascending=False).head(10)
         
-        fig = px.bar(
-            critical_items_df,
-            x='ItemName',
-            y=['CurrentQuantity', 'ReorderLevel'],
-            barmode='group',
-            title='Inventory Levels vs. Reorder Points',
-            labels={
-                'value': 'Quantity',
-                'variable': 'Metric', 
-                'ItemName': 'Item'
-            },
-            color_discrete_map={
-                'CurrentQuantity': 'red',
-                'ReorderLevel': 'blue'
-            }
+        # Create enhanced inventory levels chart
+        fig = create_enhanced_inventory_chart(
+            df=critical_items_df,
+            x_col='ItemName',
+            y_cols=['CurrentQuantity', 'ReorderLevel'],
+            title='Critical Items: Current vs. Reorder Levels'
         )
         
-        # Force y-axis to use integers only
-        fig.update_yaxes(dtick=10, tick0=0)
+        # Update colors to be more meaningful
+        fig.update_traces(
+            marker_color=[STREAMLIT_COLORS[0], STREAMLIT_COLORS[2]],  # Red for current, Blue for reorder
+            selector=dict(type='bar')
+        )
         
-        # Add data labels on top of bars
-        fig.update_traces(texttemplate='%{y}', textposition='outside')
-        
-        # Adjust layout for better readability
+        # Enhanced formatting
         fig.update_layout(
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.02,
-                xanchor="right",
-                x=1
-            )
+            xaxis=dict(tickangle=-45, title='Inventory Items'),
+            yaxis=dict(title='Quantity', dtick=max(1, critical_items_df[['CurrentQuantity', 'ReorderLevel']].max().max() // 10)),
+            hovermode='x unified'
         )
+        
+        # Add shortage indicators
+        for i, row in critical_items_df.iterrows():
+            if row['CurrentQuantity'] < row['ReorderLevel']:
+                shortage = row['ReorderLevel'] - row['CurrentQuantity']
+                fig.add_annotation(
+                    x=row['ItemName'],
+                    y=row['CurrentQuantity'] + shortage/2,
+                    text=f"Short: {shortage:.0f}",
+                    showarrow=True,
+                    arrowhead=2,
+                    arrowcolor="red",
+                    font=dict(color="red", size=10)
+                )
         
         st.plotly_chart(fig, use_container_width=True)
         
@@ -178,62 +231,68 @@ def inventory_dashboard():
             # Replace infinite values with a large number for display purposes
             consumption_df['DaysOfSupply'] = consumption_df['DaysOfSupply'].replace(float('inf'), 90)
             
-            # Create days of supply visualization
+            # Create enhanced days of supply visualization
             fig = go.Figure()
+            
+            # Create color mapping based on urgency
+            colors = []
+            for days in consumption_df['DaysOfSupply']:
+                if days < 5:
+                    colors.append(STREAMLIT_COLORS[0])  # Red - Critical
+                elif days < 10:
+                    colors.append(STREAMLIT_COLORS[4])  # Yellow - Warning
+                else:
+                    colors.append(STREAMLIT_COLORS[3])  # Green - Good
             
             # Add horizontal bars for days of supply
             fig.add_trace(go.Bar(
                 y=consumption_df['ItemName'],
-                x=consumption_df['DaysOfSupply'].clip(upper=90),  # Clip at 90 days for better visualization
+                x=consumption_df['DaysOfSupply'].clip(upper=30),  # Clip at 30 days for better visualization
                 orientation='h',
                 name='Days of Supply',
-                marker_color=consumption_df['DaysOfSupply'].apply(lambda x: 
-                    'red' if x < 5 else 
-                    'orange' if x < 10 else 
-                    'green'
-                )
+                marker_color=colors,
+                text=consumption_df['DaysOfSupply'].apply(lambda x: f"{x:.1f} days" if x < 30 else "30+ days"),
+                textposition='outside',
+                hovertemplate='<b>%{y}</b><br>Days of Supply: %{x:.1f}<br>Status: %{text}<extra></extra>'
             ))
             
-            # Add vertical lines for reference
-            fig.add_shape(
-                type="line",
-                x0=5, y0=-0.5,
-                x1=5, y1=len(consumption_df) - 0.5,
-                line=dict(color="red", width=2, dash="dash")
+            # Add reference zones with better styling
+            fig.add_vrect(
+                x0=0, x1=5,
+                fillcolor="red", opacity=0.1,
+                layer="below", line_width=0,
+                annotation_text="Critical Zone", annotation_position="top left"
             )
             
-            fig.add_shape(
-                type="line",
-                x0=10, y0=-0.5,
-                x1=10, y1=len(consumption_df) - 0.5,
-                line=dict(color="orange", width=2, dash="dash")
+            fig.add_vrect(
+                x0=5, x1=10,
+                fillcolor="orange", opacity=0.1,
+                layer="below", line_width=0,
+                annotation_text="Warning Zone", annotation_position="top left"
             )
             
-            # Add annotations
-            fig.add_annotation(
-                x=5, y=len(consumption_df),
-                text="Critical (5 days)",
-                showarrow=False,
-                yshift=10,
-                font=dict(color="red")
+            fig.add_vrect(
+                x0=10, x1=30,
+                fillcolor="green", opacity=0.1,
+                layer="below", line_width=0,
+                annotation_text="Safe Zone", annotation_position="top left"
             )
             
-            fig.add_annotation(
-                x=10, y=len(consumption_df),
-                text="Warning (10 days)",
-                showarrow=False,
-                yshift=10,
-                font=dict(color="orange")
-            )
+            # Add vertical reference lines
+            fig.add_vline(x=5, line_dash="dash", line_color="red", line_width=2)
+            fig.add_vline(x=10, line_dash="dash", line_color="orange", line_width=2)
             
-            # Update layout
+            # Enhanced layout
             fig.update_layout(
-                title='Days of Supply for Critical Items',
-                xaxis_title='Days of Supply',
-                yaxis_title='Item',
-                height=400,
-                margin=dict(l=20, r=20, t=50, b=20),
-                xaxis=dict(range=[0, 30])  # 30 days
+                title=dict(text='Days of Supply Analysis - Critical Items', font=dict(size=16)),
+                xaxis_title='Days of Supply Remaining',
+                yaxis_title='Inventory Items',
+                template="plotly_white",
+                height=450,
+                margin=dict(l=150, r=50, t=80, b=50),
+                xaxis=dict(range=[0, 30]),
+                yaxis={'categoryorder':'total ascending'},
+                showlegend=False
             )
             
             st.plotly_chart(fig, use_container_width=True)
