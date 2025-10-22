@@ -485,9 +485,9 @@ class MESSimulator:
             "Electric Motors", "Chainring Bolts"
         ]
         
-        # Select a subset of items that will have shortages
+        # Select a subset of items that will have shortages (reduce from 3 to 2)
         random.shuffle(shortage_candidates)
-        active_shortage_items = shortage_candidates[:3]  # Only 3 items will have shortages
+        active_shortage_items = shortage_candidates[:2]  # Only 2 items will have shortages
         
         # Store inventory status for reporting
         inventory_status = {
@@ -525,45 +525,49 @@ class MESSimulator:
                 lead_time_range['max']
             )
             
-            # Generate quantity based on item type
+            # Generate quantity based on item type - much higher base quantities
             if category == "Raw Material":
-                quantity = random.randint(40, 120)
+                quantity = random.randint(100, 300)  # Much higher quantities
             elif category in ["Electronic Component", "Mechanical Component"]:
-                quantity = random.randint(20, 80)
+                quantity = random.randint(80, 200)   # Much higher quantities
             elif category == "Assembly":
-                quantity = random.randint(15, 60)
+                quantity = random.randint(50, 150)   # Much higher quantities
             else:
-                quantity = random.randint(10, 50)
+                quantity = random.randint(40, 120)   # Much higher quantities
                 
-            # Adjust quantities for shortage items
+            # Adjust quantities for shortage items - but still reasonable levels
             if name in active_shortage_items:
-                quantity = random.randint(8, 25)
+                quantity = random.randint(25, 50)    # Higher shortage quantities
                 
-            # Set reorder levels based on item type
+            # Set reorder levels based on item type - very conservative reorder levels
             if name in critical_raw_materials:
-                # Critical raw materials - slightly below current stock
-                reorder_level = int(quantity * random.uniform(0.75, 0.9))
-                inventory_status["low"] += 1
+                # Critical raw materials - very low reorder levels
+                reorder_level = int(quantity * random.uniform(0.05, 0.15))  # Very conservative
+                inventory_status["well_stocked"] += 1
             elif name in active_shortage_items:
-                # Shortage items - reorder level above current stock
-                reorder_level = int(quantity * random.uniform(1.3, 1.8))
+                # Shortage items - reorder level above current stock (true shortages)
+                reorder_level = int(quantity * random.uniform(1.05, 1.2))  # Just slightly above stock
                 inventory_status["critical"] += 1
             else:
-                # Determine stock status category
+                # Determine stock status category - heavily weighted toward well-stocked
                 stock_status = random.choices(
-                    ["well_stocked", "adequate"],
-                    weights=[40, 60],  # Distribution of stock levels
+                    ["well_stocked", "adequate", "low"],
+                    weights=[85, 12, 3],  # Even more items well stocked
                     k=1
                 )[0]
                 
                 if stock_status == "well_stocked":
-                    # Well-stocked items
-                    reorder_level = int(quantity * random.uniform(0.4, 0.7))
+                    # Well-stocked items - very conservative reorder levels
+                    reorder_level = int(quantity * random.uniform(0.05, 0.15))  # Very low reorder levels
                     inventory_status["well_stocked"] += 1
-                else:
-                    # Adequate items
-                    reorder_level = int(quantity * random.uniform(0.7, 0.9))
+                elif stock_status == "adequate":
+                    # Adequate items - still conservative reorder levels
+                    reorder_level = int(quantity * random.uniform(0.15, 0.25))  # Conservative reorder levels
                     inventory_status["adequate"] += 1
+                else:
+                    # Low items - moderate reorder levels but still below stock
+                    reorder_level = int(quantity * random.uniform(0.4, 0.6))  # Below stock
+                    inventory_status["low"] += 1
             
             # Ensure reorder level is at least 1
             reorder_level = max(1, reorder_level)
@@ -907,16 +911,16 @@ class MESSimulator:
                 capacity_min, capacity_max = self.data_pools['nominal_capacity'][machine_type]
                 wc_name, wc_id = random.choice(suitable_work_centers)
                 
-                # Generate realistic dates
+                # Generate realistic dates - better maintenance schedule
                 installation_date = datetime.now() - timedelta(days=random.randint(90, 1000))
-                last_maintenance = datetime.now() - timedelta(days=random.randint(1, 60))
-                maintenance_frequency = random.randint(160, 200)  # hours
+                last_maintenance = datetime.now() - timedelta(days=random.randint(1, 30))  # More recent maintenance
+                maintenance_frequency = random.randint(200, 300)  # Increased from 160-200 to 200-300 hours
                 next_maintenance = last_maintenance + timedelta(hours=maintenance_frequency)
                 
-                # Machine status weighted toward running
+                # Machine status weighted toward running - reduced breakdown probability
                 status = random.choices(
                     ['running', 'idle', 'maintenance', 'breakdown'],
-                    weights=[70, 15, 10, 5],
+                    weights=[80, 15, 4, 1],  # Reduced breakdown from 5% to 1%, maintenance from 10% to 4%
                     k=1
                 )[0]
                 
@@ -1564,8 +1568,8 @@ class MESSimulator:
                     lot_number, actual_end or datetime.now(), inventory_ids_map
                 )
                 
-                # Create downtime records (random chance)
-                if random.random() < 0.2:  # 20% chance of downtime
+                # Create downtime records (random chance) - reduced probability
+                if random.random() < 0.08:  # 8% chance of downtime (reduced from 20%)
                     self.create_downtime_record(
                         session, machine_id, order_id, status, 
                         planned_start, planned_end, employee_ids
@@ -2156,13 +2160,14 @@ class MESSimulator:
                     
                     if inventory_item:
                         if item_name in critical_items:
-                            # For critical items, ensure we never go below a minimum level
-                            min_reserve = max(1, int(inventory_item.ReorderLevel * 0.15))
+                            # For critical items, keep reasonable reserves above reorder level
+                            min_reserve = max(inventory_item.ReorderLevel * 2, int(inventory_item.Quantity * 0.2))
                             available_qty = max(0, inventory_item.Quantity - min_reserve)
                             consumption = min(int(actual_value), available_qty)
                             new_qty = inventory_item.Quantity - consumption
                         else:
-                            min_reserve = max(0, int(inventory_item.ReorderLevel * 0.05))
+                            # For other items, allow consumption but stay above reorder level
+                            min_reserve = max(inventory_item.ReorderLevel, int(inventory_item.Quantity * 0.1))
                             available_qty = max(0, inventory_item.Quantity - min_reserve)
                             consumption = min(int(actual_value), available_qty)
                             new_qty = inventory_item.Quantity - consumption
@@ -2260,20 +2265,20 @@ class MESSimulator:
                 
                 if inventory_item:
                     if is_critical:
-                        # For critical items, ensure we never go below a higher minimum level
-                        min_reserve = max(2, int(inventory_item.ReorderLevel * 0.15))
+                        # For critical items, maintain buffer above reorder level
+                        min_reserve = max(inventory_item.ReorderLevel * 2, int(inventory_item.Quantity * 0.25))
                         available_qty = max(0, inventory_item.Quantity - min_reserve)
                         consumption = min(int(actual_value), available_qty)
                         new_qty = inventory_item.Quantity - consumption
                     elif is_common:
-                        # For common items, maintain at least 10% of reorder level
-                        min_reserve = max(1, int(inventory_item.ReorderLevel * 0.10))
+                        # For common items, maintain reasonable buffer
+                        min_reserve = max(inventory_item.ReorderLevel * 1.5, int(inventory_item.Quantity * 0.15))
                         available_qty = max(0, inventory_item.Quantity - min_reserve)
                         consumption = min(int(actual_value), available_qty)
                         new_qty = inventory_item.Quantity - consumption
                     else:
-                        # For non-critical, non-common items, allow reduction to 5% of reorder level
-                        min_reserve = max(0, int(inventory_item.ReorderLevel * 0.05))
+                        # For other items, allow consumption but stay above reorder level
+                        min_reserve = max(inventory_item.ReorderLevel, int(inventory_item.Quantity * 0.1))
                         available_qty = max(0, inventory_item.Quantity - min_reserve)
                         consumption = min(int(actual_value), available_qty)
                         new_qty = inventory_item.Quantity - consumption
@@ -2840,15 +2845,16 @@ class MESSimulator:
             breakdown_factor = 0.8  # Simple operation, fewer issues
         
         # Base probability of unplanned downtime increases with days since maintenance
+        # Reduced probabilities for more realistic breakdown rates
         # Early days (0-15): very low probability
-        # Mid-term (16-30): moderate increase
-        # Late (31+): higher probability
+        # Mid-term (16-30): slight increase
+        # Late (31+): moderate increase
         if days_since_maintenance < 15:
-            unplanned_probability = 0.05 * breakdown_factor
+            unplanned_probability = 0.02 * breakdown_factor  # Reduced from 0.05
         elif days_since_maintenance < 30:
-            unplanned_probability = 0.15 * breakdown_factor
+            unplanned_probability = 0.05 * breakdown_factor  # Reduced from 0.15
         else:
-            unplanned_probability = min(0.4, 0.15 + (days_since_maintenance - 30) * 0.01) * breakdown_factor
+            unplanned_probability = min(0.15, 0.05 + (days_since_maintenance - 30) * 0.005) * breakdown_factor  # Reduced from 0.4 and 0.01
         
         # Determine if planned or unplanned based on this curve
         category = random.choices(
@@ -2860,33 +2866,33 @@ class MESSimulator:
         # Get downtime reasons for this category
         reasons = self.data_pools['downtime_reasons'][category]
         
-        # Weight reasons based on machine type and maintenance status
+        # Weight reasons based on machine type and maintenance status - reduced equipment failures
         if category == 'unplanned':
             if days_since_maintenance > 30:
-                # More breakdowns for machines needing maintenance
+                # Reduced equipment failures even for machines needing maintenance
                 weighted_reasons = {
-                    "Equipment Failure": 50,
-                    "Power Outage": 5,
-                    "Material Shortage": 10,
-                    "Operator Absence": 5,
-                    "Quality Issue": 10,
-                    "Tool Breakage": 15,
-                    "Software Error": 5,
-                    "Safety Incident": 5,
-                    "Unexpected Maintenance": 20
+                    "Equipment Failure": 25,      # Reduced from 50
+                    "Power Outage": 8,
+                    "Material Shortage": 20,      # Increased from 10
+                    "Operator Absence": 10,       # Increased from 5
+                    "Quality Issue": 15,          # Increased from 10
+                    "Tool Breakage": 12,
+                    "Software Error": 8,
+                    "Safety Incident": 2,         # Reduced from 5
+                    "Unexpected Maintenance": 15  # Reduced from 20
                 }
             else:
-                # More balanced for well-maintained machines
+                # Even more balanced for well-maintained machines
                 weighted_reasons = {
-                    "Equipment Failure": 20,
-                    "Power Outage": 10,
-                    "Material Shortage": 20,
-                    "Operator Absence": 15,
-                    "Quality Issue": 15,
-                    "Tool Breakage": 10,
-                    "Software Error": 10,
-                    "Safety Incident": 5,
-                    "Unexpected Maintenance": 10
+                    "Equipment Failure": 10,      # Reduced from 20
+                    "Power Outage": 12,
+                    "Material Shortage": 25,      # Increased from 20
+                    "Operator Absence": 20,       # Increased from 15
+                    "Quality Issue": 18,          # Increased from 15
+                    "Tool Breakage": 8,           # Reduced from 10
+                    "Software Error": 5,          # Reduced from 10
+                    "Safety Incident": 2,         # Reduced from 5
+                    "Unexpected Maintenance": 5   # Reduced from 10
                 }
             
             # Filter to only include valid reasons from the data pool
