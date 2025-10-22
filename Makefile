@@ -13,6 +13,11 @@ install: ## Install dependencies
 dev: ## Install development dependencies
 	uv sync --group dev
 
+setup-db: ## Create or refresh the MES database with synthetic data
+	uv run app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 14
+
+setup: install setup-db ## Complete setup: install dependencies and create database
+
 test: ## Run tests
 	uv run pytest tests/
 

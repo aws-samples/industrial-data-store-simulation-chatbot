@@ -153,9 +153,12 @@ sequenceDiagram
    Set up the project environment using uv:
 
    ```bash
-   uv sync
-   # Or use the Makefile shortcut
-   make install
+   # Complete setup (install dependencies + create database)
+   make setup
+   
+   # Or step by step:
+   make install    # Install dependencies only
+   make setup-db   # Create database only
    ```
 
    This will automatically create a virtual environment and install all dependencies.
@@ -173,16 +176,19 @@ sequenceDiagram
 
    ```bash
    # Create tables and simulation data (auto-detects if database exists)
-   uv run app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 90 --lookahead 14
+   make setup-db
    ```
 
    This will create the database file `mes.db` in the project root directory if it doesn't exist, or refresh the data if it does.
 
-   **Additional Options**
+   **Advanced Options**
 
    ```bash
    # Get help on all configuration options
    uv run app_factory/data_generator/sqlite-synthetic-mes-data.py --help
+   
+   # Or run with custom parameters
+   uv run app_factory/data_generator/sqlite-synthetic-mes-data.py --config app_factory/data_generator/data_pools.json --lookback 60 --lookahead 7
    ```
 
 4. **Set Up Daily Analysis Automation (Optional)**
@@ -217,23 +223,6 @@ You can run the applications independently or together:
 uv run streamlit run app_factory/main.py
 # Or use the Makefile shortcut
 make start-dashboard
-```
-
-**💡 Performance Tip**: For the best experience with AI Insights, set up daily analysis caching:
-```bash
-make setup-automation  # One-time setup (Linux only)
-make run-analysis      # Generate initial cache (all platforms)
-```
-
-### Run Components Independently
-
-```bash
-# Run only the MES Insight Chat
-uv run streamlit run app_factory/mes_chat/chat_interface.py
-# Or: make start-chat
-
-# Run only the Daily Production Meeting
-uv run streamlit run app_factory/production_meeting/dashboard.py
 ```
 
 ### Educational Jupyter Notebook
@@ -341,33 +330,6 @@ Use the configuration options to control the date ranges and data characteristic
 └── reports/                     # Generated reports directory (not in repo)
 ```
 
-## Makefile Commands
-
-For convenience, the project includes a Makefile with shortcuts for common operations:
-
-```bash
-# View all available commands
-make help
-
-# Setup and installation
-make install              # Install dependencies
-make dev                  # Install development dependencies
-
-# Running applications
-make start-dashboard      # Start the combined Streamlit dashboard
-make start-chat          # Start only the MES Chat interface
-
-# Daily analysis system
-make run-analysis        # Generate analysis manually (all platforms)
-make setup-automation    # Set up systemd automation (Linux only)
-make check-cache         # Check analysis cache status
-make list-cache          # List available cached analyses
-make logs               # View daily analysis logs
-
-# Development
-make test               # Run tests
-make clean              # Clean up cache and temporary files
-```
 
 ## Using the Applications
 
