@@ -1,12 +1,12 @@
 # Manufacturing Operations Hub
 
-A comprehensive platform providing manufacturing operations interfaces powered by Amazon Bedrock. This project offers a combination of **natural language interaction with MES** (Manufacturing Execution System) data structured dashboards for daily lean production meetings with AI data analysis.
+Sample code project providing manufacturing operations interfaces powered by Amazon Bedrock and Strands Agents SDK. This project offers a combination of **natural language interaction with MES** (Manufacturing Execution System) and dashboards for daily lean production meetings with AI data analysis.
 
 ![MES chatbot UI](assets/mes-chatbot-example-screenshot.png)
 
 ## Overview
 
-This application provides two integrated interfaces for manufacturing operations:
+This application provides two integrated interfaces for manufacturing operations and an educational notebook:
 
 1. **MES Insight Chat** - An interactive AI-powered chatbot for analyzing Manufacturing Execution System (MES) data
 2. **Daily Production Meeting** - A structured interface for daily lean meetings and production status reviews
@@ -157,7 +157,7 @@ sequenceDiagram
    make setup
    
    # Or step by step:
-   make install    # Install dependencies only
+   make install    # Install dependencies only via uv sync
    make setup-db   # Create database only
    ```
 
@@ -203,7 +203,7 @@ sequenceDiagram
    make run-analysis
    ```
 
-   **Note**: Automated setup requires systemd (Linux distributions like Amazon Linux 2023, Ubuntu, CentOS, etc.). macOS users can run analysis manually using `make run-analysis`.
+   **Note**: Automated setup (`make setup-automation`) requires systemd (Linux distributions like Amazon Linux 2023, Ubuntu, CentOS, etc.). macOS users can run analysis manually using `make run-analysis`.
 
     1. **🔄 Generates Fresh Data** - Updates synthetic MES data (90 days historical, 14 days projected)
     2. **🤖 Runs AI Analysis** - Comprehensive analysis across all production contexts
@@ -214,9 +214,7 @@ sequenceDiagram
 
 ## Running the Applications
 
-You can run the applications independently or together:
-
-### Run All Components Together
+### Running the combined applications - chatbot and dashboards
 
 ```bash
 # Start the combined application

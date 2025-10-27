@@ -30,11 +30,20 @@ _error_analyzer = IntelligentErrorAnalyzer()
 _partial_presenter = PartialResultPresenter()
 _progress_updates = []
 _logger = logging.getLogger(__name__)
+_persistent_agent = None  # Single persistent agent instance
+_agent_creation_date = None  # Track when agent was created
 
 
 def _get_system_prompt() -> str:
-    """Get the system prompt for the MES Analysis Agent."""
-    return """You are a comprehensive Manufacturing Execution System (MES) Analysis Agent with deep expertise across all manufacturing domains. Your role is to provide intelligent, multi-step analysis of manufacturing data to help users understand production performance, quality issues, equipment efficiency, and inventory management.
+    """Get the system prompt for the MES Analysis Agent with current date."""
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    current_year = datetime.now().year
+    
+    return f"""You are a comprehensive Manufacturing Execution System (MES) Analysis Agent with deep expertise across all manufacturing domains. Your role is to provide intelligent, multi-step analysis of manufacturing data to help users understand production performance, quality issues, equipment efficiency, and inventory management.
+
+**CURRENT DATE**: {current_date} (Year: {current_year})
+
+**IMPORTANT**: You maintain conversation context across multiple interactions. When users ask follow-up questions, refer back to previous analyses, build upon earlier findings, and maintain continuity in the conversation. Use phrases like "Based on our previous analysis..." or "Building on what we found earlier..." when appropriate.
 
 ## Your Expertise Areas:
 
@@ -113,6 +122,38 @@ Adjust your response depth based on the user's needs:
 Always provide helpful, accurate information that matches the requested level of detail."""
 
 
+def _get_or_create_persistent_agent():
+    """Get or create the persistent agent instance, resetting if date has changed."""
+    global _persistent_agent, _agent_creation_date
+    
+    current_date = datetime.now().date()
+    
+    # Reset agent if date has changed (prevents stale long-running sessions)
+    if _agent_creation_date and _agent_creation_date != current_date:
+        _logger.info(f"Date changed from {_agent_creation_date} to {current_date}, resetting agent")
+        _persistent_agent = None
+        _agent_creation_date = None
+    
+    if _persistent_agent is None:
+        _logger.info(f"Creating new persistent MES analysis agent for date {current_date}")
+        _persistent_agent = Agent(
+            system_prompt=_get_system_prompt(),
+            tools=[run_sqlite_query, get_database_schema, create_intelligent_visualization],
+            model=_config.default_model
+        )
+        _agent_creation_date = current_date
+    
+    return _persistent_agent
+
+
+def reset_persistent_agent():
+    """Reset the persistent agent (called when user hits reset)."""
+    global _persistent_agent, _agent_creation_date
+    _logger.info("Resetting persistent MES analysis agent")
+    _persistent_agent = None
+    _agent_creation_date = None
+
+
 @tool
 def mes_analysis_tool(query: str) -> str:
     """
@@ -136,14 +177,10 @@ def mes_analysis_tool(query: str) -> str:
         _progress_updates = []
         _add_progress_update("Starting MES analysis...", "initializing")
         
-        # Create the MES analysis agent
-        _add_progress_update("Initializing MES analysis agent...", "planning")
+        # Get or create the persistent MES analysis agent
+        _add_progress_update("Using persistent MES analysis agent...", "planning")
         
-        mes_agent = Agent(
-            system_prompt=_get_system_prompt(),
-            tools=[run_sqlite_query, get_database_schema, create_intelligent_visualization],
-            model=_config.default_model
-        )
+        mes_agent = _get_or_create_persistent_agent()
         
         # Format the query based on analysis depth
         if _config.analysis_depth == "standard":
@@ -254,9 +291,18 @@ def get_progress_updates() -> List[Dict[str, Any]]:
 
 
 def update_config(config: AgentConfig):
-    """Update the global configuration."""
-    global _config
+    """Update the global configuration and reset agent if model changed."""
+    global _config, _persistent_agent
+    
+    # Check if model changed
+    model_changed = _config.default_model != config.default_model
+    
     _config = config
+    
+    # Reset agent if model changed to use new model
+    if model_changed and _persistent_agent is not None:
+        _logger.info(f"Model changed to {config.default_model}, resetting persistent agent")
+        reset_persistent_agent()
 
 
 # Legacy class for backward compatibility

@@ -1,9 +1,7 @@
 """
-Agent-enabled MES Chat application using Strands SDK.
+Agentic MES chatbot application using Strands SDK.
 
-This application provides an intelligent chat interface that integrates with the MES Analysis Agent
-to provide comprehensive, multi-step analysis capabilities with progress tracking and 
-enhanced result presentation.
+This application provides an intelligent agentic chat interface with multi-step analysis capabilities through Strands agents.
 """
 
 import json
@@ -56,6 +54,10 @@ def reset_chat():
     st.session_state.conversation_history = []
     st.session_state.last_result = None
     st.session_state.progress = []
+    
+    # Reset the persistent agent conversation history
+    if 'agent_manager' in st.session_state:
+        st.session_state.agent_manager.reset_conversation()
 
 
 def display_progress_updates(progress_updates: List[Dict[str, Any]]):
@@ -264,14 +266,7 @@ def run_mes_chat():
     """Main function to run the agent-enabled MES chat interface"""
     
     # Page configuration
-    st.header("🤖 MES Insight Chat - AI Agent Edition")
-    st.markdown("""
-    **Enhanced with Intelligent AI Agents** - This advanced chatbot uses specialized AI agents 
-    to provide comprehensive analysis of your Manufacturing Execution System (MES) data.
-    
-    Ask complex questions about production, quality, equipment, and inventory - the agents will 
-    break down your queries into logical steps and provide detailed insights.
-    """)
+    st.header("🤖 MES Insight Chat")
     
     # Initialize session state for agent chat
     if "messages" not in st.session_state:
@@ -286,17 +281,20 @@ def run_mes_chat():
     if "progress" not in st.session_state:
         st.session_state.progress = []
     
-    # Initialize agent manager with default configuration
-    try:
-        # Create agent configuration with defaults
-        agent_config = AgentConfig()
-        
-        # Initialize agent manager
-        agent_manager = MESAgentManager(agent_config)
-        
-    except Exception as e:
-        st.error(f"Failed to initialize agent manager: {e}")
-        st.stop()
+    # Initialize agent manager with default configuration (store in session state for persistence)
+    if 'agent_manager' not in st.session_state:
+        try:
+            # Create agent configuration with defaults
+            agent_config = AgentConfig()
+            
+            # Initialize agent manager and store in session state
+            st.session_state.agent_manager = MESAgentManager(agent_config)
+            
+        except Exception as e:
+            st.error(f"Failed to initialize agent manager: {e}")
+            st.stop()
+    
+    agent_manager = st.session_state.agent_manager
     
     # Sidebar configuration
     with st.sidebar:
@@ -325,17 +323,17 @@ def run_mes_chat():
         )
         
         # Update agent config if changed
-        if agent_config.analysis_depth != analysis_depth:
-            agent_config.analysis_depth = analysis_depth
-            agent_manager.update_config(agent_config)
+        if agent_manager.config.analysis_depth != analysis_depth:
+            agent_manager.config.analysis_depth = analysis_depth
+            agent_manager.update_config(agent_manager.config)
         
         # Model selection using config
-        available_models = agent_config.SUPPORTED_MODELS
-        model_display_names = agent_config.get_model_display_names()
+        available_models = agent_manager.config.SUPPORTED_MODELS
+        model_display_names = agent_manager.config.get_model_display_names()
         
         current_model_index = 0
-        if agent_config.default_model in available_models:
-            current_model_index = available_models.index(agent_config.default_model)
+        if agent_manager.config.default_model in available_models:
+            current_model_index = available_models.index(agent_manager.config.default_model)
         
         selected_model_index = st.selectbox(
             "AI Model",
@@ -347,9 +345,9 @@ def run_mes_chat():
         )
         
         selected_model_id = available_models[selected_model_index]
-        if agent_config.default_model != selected_model_id:
-            agent_config.default_model = selected_model_id
-            agent_manager.update_config(agent_config)
+        if agent_manager.config.default_model != selected_model_id:
+            agent_manager.config.default_model = selected_model_id
+            agent_manager.update_config(agent_manager.config)
         
         st.divider()
         
@@ -373,7 +371,9 @@ def run_mes_chat():
             
             🎯 **Error Recovery**: Smart error handling and alternative approaches
             
-            📈 **Advanced Visualizations**: AI-selected charts based on data characteristics
+            📈 **Visualizations**: AI-selected charts based on data characteristics
+            
+            📅 **Session Management**: Conversations automatically reset daily to ensure current date context
             """)
     
     # Main panel with chat interface
@@ -397,8 +397,8 @@ def run_mes_chat():
     
         # Example questions for agents
         if category_questions:
-            st.subheader("🎯 Agent-Powered Example Questions")
-            st.markdown("*These questions showcase the agent's multi-step analysis capabilities*")
+            st.subheader("🎯 Example Questions")
+            st.markdown("*These questions showcase the agentic system multi-step analysis capabilities*")
             
             col1, col2 = st.columns(2)
             

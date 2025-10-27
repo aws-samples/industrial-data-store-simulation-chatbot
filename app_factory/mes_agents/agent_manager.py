@@ -18,7 +18,7 @@ Usage:
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from .config import AgentConfig, default_config
-from .mes_analysis_agent import MESAnalysisAgent
+from .mes_analysis_agent import MESAnalysisAgent, reset_persistent_agent
 
 
 class MESAgentManager:
@@ -207,6 +207,7 @@ class MESAgentManager:
         Useful for applying configuration changes without restarting the application.
         """
         self.agent = None
+        reset_persistent_agent()  # Reset the persistent Strands agent
         self._initialize_agent()
     
     def get_streaming_progress(self):
@@ -219,6 +220,14 @@ class MESAgentManager:
         if self.agent:
             for update in self.agent.get_progress_updates():
                 yield update
+    
+    def reset_conversation(self):
+        """
+        Reset the conversation history by resetting the persistent agent.
+        
+        This is called when the user hits the reset button.
+        """
+        reset_persistent_agent()
     
     def update_config(self, new_config: AgentConfig):
         """
