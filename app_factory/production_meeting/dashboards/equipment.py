@@ -15,43 +15,40 @@ db_manager = DatabaseManager()
 
 # Import shared color configuration
 from .color_config import (
-    STREAMLIT_COLORS, STATUS_COLORS, get_performance_color,
+    DEFAULT_COLORS, STATUS_COLORS, get_performance_color,
     get_status_color_map, apply_theme_compatibility
 )
 
 def create_enhanced_equipment_gauge(availability_pct, title="Machine Availability"):
-    """Create enhanced gauge for equipment availability"""
+    """Create enhanced gauge for equipment availability - theme compatible"""
     fig = go.Figure(go.Indicator(
         mode="gauge+number+delta",
         value=availability_pct,
         domain={'x': [0, 1], 'y': [0, 1]},
         title={'text': title, 'font': {'size': 16}},
-        delta={'reference': 85, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+        delta={'reference': 85, 'increasing': {'color': "#00CC96"}, 'decreasing': {'color': "#EF553B"}},
         gauge={
-            'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+            'axis': {'range': [0, 100], 'tickwidth': 1},
             'bar': {'color': get_performance_color(availability_pct), 'thickness': 0.3},
-            'bgcolor': "white",
-            'borderwidth': 2,
-            'bordercolor': "gray",
+            'borderwidth': 1,
             'steps': [
-                {'range': [0, 50], 'color': '#ffcccc'},   # Light red
-                {'range': [50, 80], 'color': '#ffffcc'},  # Light yellow
-                {'range': [80, 100], 'color': '#ccffcc'}  # Light green
+                {'range': [0, 50], 'color': 'rgba(239, 85, 59, 0.3)'},   # Red with transparency
+                {'range': [50, 80], 'color': 'rgba(255, 161, 90, 0.3)'}, # Orange with transparency
+                {'range': [80, 100], 'color': 'rgba(0, 204, 150, 0.3)'} # Green with transparency
             ],
             'threshold': {
-                'line': {'color': "red", 'width': 4},
+                'line': {'color': "#EF553B", 'width': 4},
                 'thickness': 0.75,
                 'value': 85
             }
         }
     ))
-    
+
     fig.update_layout(
         height=350,
-        margin=dict(l=20, r=20, t=60, b=20),
-        font={'color': "darkblue", 'family': "Arial"}
+        margin=dict(l=20, r=20, t=60, b=20)
     )
-    
+
     return fig
 
 def equipment_status_dashboard():
@@ -101,14 +98,13 @@ def equipment_status_dashboard():
             
             # Enhanced formatting
             fig.update_traces(
-                textposition='inside', 
+                textposition='inside',
                 textinfo='percent+label',
-                textfont_size=12,
-                marker=dict(line=dict(color='#FFFFFF', width=2))
+                textfont_size=12
             )
             
             fig.update_layout(
-                template="plotly_white",
+                template="plotly",
                 height=350,
                 title=dict(font=dict(size=14)),
                 legend=dict(
@@ -144,7 +140,7 @@ def equipment_status_dashboard():
             )
             
             fig.update_layout(
-                template="plotly_white",
+                template="plotly",
                 height=400,
                 title=dict(font=dict(size=16)),
                 coloraxis_colorbar=dict(title='Efficiency (%)'),
@@ -184,7 +180,7 @@ def equipment_status_dashboard():
             
             # Enhanced formatting
             fig.update_layout(
-                template="plotly_white",
+                template="plotly",
                 height=400,
                 title=dict(font=dict(size=16)),
                 xaxis=dict(tickangle=-45),
@@ -212,21 +208,21 @@ def equipment_status_dashboard():
     
     # Get downtime data with production impact
     downtime_query = """
-    SELECT 
+    SELECT
         m.Name as MachineName,
         m.Type as MachineType,
         d.Reason as DowntimeReason,
         d.Category as DowntimeCategory,
         d.Duration as DurationMinutes,
-        m.HourlyRate as UnitsPerHour,
-        (d.Duration / 60.0 * m.HourlyRate) as EstimatedLostUnits
-    FROM 
+        m.NominalCapacity as UnitsPerHour,
+        (d.Duration / 60.0 * m.NominalCapacity) as EstimatedLostUnits
+    FROM
         Downtimes d
-    JOIN 
+    JOIN
         Machines m ON d.MachineID = m.MachineID
-    WHERE 
+    WHERE
         d.StartTime >= date('now', '-7 day')
-    ORDER BY 
+    ORDER BY
         EstimatedLostUnits DESC
     LIMIT 10
     """
@@ -322,7 +318,7 @@ def equipment_status_dashboard():
             x1=len(reason_impact)-0.5,
             y0=80,
             y1=80,
-            line=dict(color="black", width=1, dash="dash"),
+            line=dict(color="gray", width=1, dash="dash"),
             yref='y2'
         )
         

@@ -21,7 +21,7 @@ class AgentConfig:
     SUPPORTED_MODELS = [
         'us.amazon.nova-lite-v1:0',
         'us.amazon.nova-pro-v1:0',
-        'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+        'us.anthropic.claude-haiku-4-5-20251001-v1:0',
         'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
         'us.anthropic.claude-sonnet-4-20250514-v1:0',
         'us.anthropic.claude-haiku-4-5-20251001-v1:0'
@@ -33,7 +33,7 @@ class AgentConfig:
         return {
             'us.amazon.nova-lite-v1:0': 'Amazon Nova Lite (Fast)',
             'us.amazon.nova-pro-v1:0': 'Amazon Nova Pro (Balanced)',
-            'us.anthropic.claude-3-5-haiku-20241022-v1:0': 'Claude 3.5 Haiku (Fast)',
+            'us.anthropic.claude-haiku-4-5-20251001-v1:0': 'Claude 3.5 Haiku (Fast)',
             'us.anthropic.claude-3-7-sonnet-20250219-v1:0': 'Claude 3.7 Sonnet (Advanced)',
             'us.anthropic.claude-sonnet-4-20250514-v1:0': 'Claude 4 Sonnet (Advanced)',
             'us.anthropic.claude-haiku-4-5-20251001-v1:0': 'Claude 4.5 Haiku (Recommended)'

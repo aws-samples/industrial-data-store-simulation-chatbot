@@ -16,7 +16,7 @@ db_manager = DatabaseManager()
 
 # Import shared color configuration
 from .color_config import (
-    STREAMLIT_COLORS, PRIORITY_COLORS, apply_theme_compatibility
+    DEFAULT_COLORS, PRIORITY_COLORS, STATUS_COLORS, apply_theme_compatibility
 )
 
 def create_enhanced_inventory_chart(df, x_col, y_cols, title, chart_type='bar'):
@@ -28,7 +28,7 @@ def create_enhanced_inventory_chart(df, x_col, y_cols, title, chart_type='bar'):
             y=y_cols,
             barmode='group',
             title=title,
-            color_discrete_sequence=STREAMLIT_COLORS
+            color_discrete_sequence=DEFAULT_COLORS
         )
         
         # Add data labels
@@ -44,14 +44,14 @@ def create_enhanced_inventory_chart(df, x_col, y_cols, title, chart_type='bar'):
             x=y_cols[0] if isinstance(y_cols, list) else y_cols,
             orientation='h',
             title=title,
-            color_discrete_sequence=STREAMLIT_COLORS
+            color_discrete_sequence=DEFAULT_COLORS
         )
         
         fig.update_layout(yaxis={'categoryorder':'total ascending'})
         
     # Apply consistent formatting
     fig.update_layout(
-        template="plotly_white",
+        template="plotly",
         height=400,
         title=dict(font=dict(size=16)),
         legend=dict(
@@ -138,7 +138,7 @@ def inventory_dashboard():
         
         # Update colors to be more meaningful
         fig.update_traces(
-            marker_color=[STREAMLIT_COLORS[0], STREAMLIT_COLORS[2]],  # Red for current, Blue for reorder
+            marker_color=[DEFAULT_COLORS[0], DEFAULT_COLORS[2]],  # Red for current, Blue for reorder
             selector=dict(type='bar')
         )
         
@@ -169,24 +169,6 @@ def inventory_dashboard():
         with st.expander("All Inventory Levels", expanded=False):
             # Use the complete inventory data instead of just alerts
             if not all_inventory.empty:
-                # Add color coding based on stock status
-                def highlight_status(val):
-                    if val == 'Critical':
-                        return 'background-color: #ffcccc'
-                    elif val == 'Low':
-                        return 'background-color: #ffffcc'
-                    elif val == 'Adequate':
-                        return 'background-color: #ccffcc'
-                    else:  # Well-Stocked
-                        return 'background-color: #ccffcc'
-                
-                # Apply the styling and display the dataframe
-                styled_inventory = all_inventory.style.applymap(
-                    lambda _: '', subset=pd.IndexSlice[:, all_inventory.columns != 'StockStatus']
-                ).applymap(
-                    highlight_status, subset=['StockStatus']
-                )
-                
                 st.dataframe(all_inventory)
             else:
                 st.info("No inventory data available")
@@ -238,11 +220,11 @@ def inventory_dashboard():
             colors = []
             for days in consumption_df['DaysOfSupply']:
                 if days < 5:
-                    colors.append(STREAMLIT_COLORS[0])  # Red - Critical
+                    colors.append(DEFAULT_COLORS[0])  # Red - Critical
                 elif days < 10:
-                    colors.append(STREAMLIT_COLORS[4])  # Yellow - Warning
+                    colors.append(DEFAULT_COLORS[4])  # Yellow - Warning
                 else:
-                    colors.append(STREAMLIT_COLORS[3])  # Green - Good
+                    colors.append(DEFAULT_COLORS[3])  # Green - Good
             
             # Add horizontal bars for days of supply
             fig.add_trace(go.Bar(
@@ -287,7 +269,7 @@ def inventory_dashboard():
                 title=dict(text='Days of Supply Analysis - Critical Items', font=dict(size=16)),
                 xaxis_title='Days of Supply Remaining',
                 yaxis_title='Inventory Items',
-                template="plotly_white",
+                template="plotly",
                 height=450,
                 margin=dict(l=150, r=50, t=80, b=50),
                 xaxis=dict(range=[0, 30]),

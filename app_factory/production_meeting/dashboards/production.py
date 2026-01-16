@@ -16,8 +16,8 @@ db_manager = DatabaseManager()
 
 # Import shared color configuration
 from .color_config import (
-    STREAMLIT_COLORS, STATUS_COLORS, PERFORMANCE_COLORS, COLOR_SCALES,
-    get_performance_color, get_status_color_map, get_chart_template, apply_theme_compatibility
+    DEFAULT_COLORS, STATUS_COLORS,
+    get_performance_color, get_status_color_map, apply_theme_compatibility
 )
 
 def get_oee_color(oee_value):
@@ -25,44 +25,67 @@ def get_oee_color(oee_value):
     return get_performance_color(oee_value, {'excellent': 85, 'good': 70, 'fair': 50})
 
 def create_enhanced_gauge(value, title, target=85, max_value=100):
-    """Create an enhanced gauge chart with better formatting"""
+    """Create an enhanced gauge chart - theme compatible with centered number"""
+    # Calculate delta for display
+    delta_value = value - target
+    delta_sign = "+" if delta_value >= 0 else ""
+    delta_color = "#00CC96" if delta_value >= 0 else "#EF553B"
+
     fig = go.Figure(go.Indicator(
-        mode="gauge+number+delta",
+        mode="gauge",  # Only gauge, we'll add number via annotation
         value=value,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': title, 'font': {'size': 16}},
-        delta={'reference': target, 'increasing': {'color': "green"}, 'decreasing': {'color': "red"}},
+        domain={'x': [0, 1], 'y': [0.2, 1]},
+        title={'text': title, 'font': {'size': 14}},
         gauge={
-            'axis': {'range': [0, max_value], 'tickwidth': 1, 'tickcolor': "darkblue"},
-            'bar': {'color': get_oee_color(value), 'thickness': 0.3},
-            'bgcolor': "white",
-            'borderwidth': 2,
-            'bordercolor': "gray",
+            'axis': {'range': [0, max_value], 'tickwidth': 1, 'tickfont': {'size': 10}},
+            'bar': {'color': get_oee_color(value), 'thickness': 0.25},
+            'borderwidth': 1,
             'steps': [
-                {'range': [0, 60], 'color': '#ffcccc'},  # Light red
-                {'range': [60, 85], 'color': '#ffffcc'},  # Light yellow
-                {'range': [85, 100], 'color': '#ccffcc'}  # Light green
+                {'range': [0, 60], 'color': 'rgba(239, 85, 59, 0.3)'},   # Red with transparency
+                {'range': [60, 85], 'color': 'rgba(255, 161, 90, 0.3)'}, # Orange with transparency
+                {'range': [85, 100], 'color': 'rgba(0, 204, 150, 0.3)'} # Green with transparency
             ],
             'threshold': {
-                'line': {'color': "red", 'width': 4},
+                'line': {'color': "#EF553B", 'width': 3},
                 'thickness': 0.75,
                 'value': target
             }
         }
     ))
-    
+
+    # Add centered number annotation
+    fig.add_annotation(
+        x=0.5,
+        y=0.35,
+        text=f"<b>{value:.0f}%</b>",
+        showarrow=False,
+        font=dict(size=36),
+        xanchor='center',
+        yanchor='middle'
+    )
+
+    # Add delta annotation below the number
+    fig.add_annotation(
+        x=0.5,
+        y=0.18,
+        text=f"<span style='color:{delta_color}'>{delta_sign}{delta_value:.0f}</span>",
+        showarrow=False,
+        font=dict(size=16, color=delta_color),
+        xanchor='center',
+        yanchor='middle'
+    )
+
     fig.update_layout(
         height=300,
-        margin=dict(l=20, r=20, t=60, b=20),
-        font={'color': "darkblue", 'family': "Arial"}
+        margin=dict(l=30, r=30, t=60, b=40)
     )
-    
+
     return apply_theme_compatibility(fig)
 
 def create_enhanced_trend_chart(df, x_col, y_cols, title, colors=None):
     """Create an enhanced trend chart with better formatting and colors"""
     if colors is None:
-        colors = STREAMLIT_COLORS
+        colors = DEFAULT_COLORS
     
     fig = go.Figure()
     
@@ -89,7 +112,7 @@ def create_enhanced_trend_chart(df, x_col, y_cols, title, colors=None):
             xanchor="right",
             x=1
         ),
-        template="plotly_white",
+        template="plotly",
         height=400
     )
     
@@ -98,7 +121,7 @@ def create_enhanced_trend_chart(df, x_col, y_cols, title, colors=None):
 def create_enhanced_bar_chart(df, x_col, y_cols, title, colors=None, show_values=True):
     """Create an enhanced bar chart with better formatting"""
     if colors is None:
-        colors = STREAMLIT_COLORS
+        colors = DEFAULT_COLORS
     
     if isinstance(y_cols, str):
         y_cols = [y_cols]
@@ -122,7 +145,7 @@ def create_enhanced_bar_chart(df, x_col, y_cols, title, colors=None, show_values
         xaxis_title=x_col.replace('_', ' ').title(),
         yaxis_title='Value',
         barmode='group' if len(y_cols) > 1 else 'relative',
-        template="plotly_white",
+        template="plotly",
         height=400,
         legend=dict(
             orientation="h",
@@ -198,15 +221,15 @@ def display_daily_overview():
                 title='Yesterday\'s Production Performance by Product',
                 labels={'value': 'Units', 'variable': 'Metric', 'ProductName': 'Product'},
                 color_discrete_map={
-                    'PlannedQuantity': STREAMLIT_COLORS[2],  # Blue
-                    'ActualProduction': STREAMLIT_COLORS[3], # Green
-                    'ScrapQuantity': STREAMLIT_COLORS[0]     # Red
+                    'PlannedQuantity': DEFAULT_COLORS[2],  # Blue
+                    'ActualProduction': DEFAULT_COLORS[3], # Green
+                    'ScrapQuantity': DEFAULT_COLORS[0]     # Red
                 }
             )
             
             # Enhanced formatting
             fig.update_layout(
-                template="plotly_white",
+                template="plotly",
                 height=400,
                 title=dict(font=dict(size=16)),
                 xaxis=dict(tickangle=-45),
@@ -273,7 +296,7 @@ def display_daily_overview():
                 x=trend_df['ProductionDate'],
                 y=trend_df['PlannedQuantity'],
                 name='Planned Production',
-                marker_color=STREAMLIT_COLORS[2],  # Blue
+                marker_color=DEFAULT_COLORS[2],  # Blue
                 text=trend_df['PlannedQuantity'],
                 texttemplate='%{text:,.0f}',
                 textposition='outside',
@@ -284,7 +307,7 @@ def display_daily_overview():
                 x=trend_df['ProductionDate'],
                 y=trend_df['ActualProduction'],
                 name='Actual Production',
-                marker_color=STREAMLIT_COLORS[3],  # Green
+                marker_color=DEFAULT_COLORS[3],  # Green
                 text=trend_df['ActualProduction'],
                 texttemplate='%{text:,.0f}',
                 textposition='outside',
@@ -296,7 +319,7 @@ def display_daily_overview():
                 x=trend_df['ProductionDate'],
                 y=trend_df['CompletionPercentage'],
                 name='Completion Rate',
-                line=dict(color=STREAMLIT_COLORS[0], width=4),  # Red
+                line=dict(color=DEFAULT_COLORS[0], width=4),  # Red
                 mode='lines+markers',
                 marker=dict(size=8),
                 yaxis='y2',
@@ -317,7 +340,7 @@ def display_daily_overview():
                     tickformat='.0f'
                 ),
                 barmode='group',
-                template="plotly_white",
+                template="plotly",
                 height=450,
                 legend=dict(
                     orientation="h",
@@ -382,10 +405,9 @@ def display_daily_overview():
             
             # Enhanced formatting
             fig.update_traces(
-                textposition='inside', 
+                textposition='inside',
                 textinfo='percent+label',
-                textfont_size=12,
-                marker=dict(line=dict(color='#FFFFFF', width=2))
+                textfont_size=12
             )
             
             fig.update_layout(
@@ -778,62 +800,71 @@ def display_bottlenecks_and_issues():
         
         if result["success"] and result["row_count"] > 0:
             bottlenecks_df = pd.DataFrame(result["rows"])
-            
-            # Add utilization column (>100% means overloaded)
-            bottlenecks_df['Utilization'] = (bottlenecks_df['EstimatedDays'] / 1) * 100
-            
-            # Create a bottleneck visualization
+
+            # Use EstimatedDays directly as backlog metric
+            bottlenecks_df['BacklogDays'] = bottlenecks_df['EstimatedDays']
+
+            # Create a bottleneck visualization showing days of backlog
             fig = px.bar(
                 bottlenecks_df,
                 x='WorkCenterName',
-                y='Utilization',
-                title='Work Center Load (Active Orders)',
+                y='BacklogDays',
+                title='Work Center Backlog (Active Orders)',
                 labels={
-                    'Utilization': 'Utilization %', 
+                    'BacklogDays': 'Backlog (Days)',
                     'WorkCenterName': 'Work Center'
                 },
-                color='Utilization',
+                color='BacklogDays',
                 color_continuous_scale=['#00CC96', '#FFA15A', '#EF553B'],
-                range_color=[0, 150]
+                range_color=[0, 10]
             )
-            
-            # Add 100% capacity line
+
+            # Add target line at 2 days (reasonable target for in-progress work)
             fig.add_shape(
                 type="line",
                 x0=-0.5,
                 x1=len(bottlenecks_df) - 0.5,
-                y0=100,
-                y1=100,
+                y0=2,
+                y1=2,
                 line=dict(color="red", width=2, dash="dash")
             )
-            
+            fig.add_annotation(
+                x=len(bottlenecks_df) - 0.5,
+                y=2,
+                text="Target: 2 days",
+                showarrow=False,
+                xanchor="right",
+                font=dict(color="red", size=10)
+            )
+
             st.plotly_chart(fig, use_container_width=True)
-            
+
             # Show detailed data with conditional formatting
             st.write("Top Work Center Bottlenecks:")
-            
+
             for i, row in bottlenecks_df.iterrows():
-                if row['Utilization'] > 120:
+                backlog_days = row['BacklogDays']
+                if backlog_days > 5:
                     status_color = "red"
-                    status_text = "Critical Overload"
-                elif row['Utilization'] > 100:
+                    status_text = "Critical Backlog"
+                elif backlog_days > 3:
                     status_color = "orange"
-                    status_text = "Overloaded"
-                elif row['Utilization'] > 80:
+                    status_text = "High Backlog"
+                elif backlog_days > 2:
                     status_color = "blue"
-                    status_text = "High Load"
+                    status_text = "Moderate Backlog"
                 else:
                     status_color = "green"
-                    status_text = "Normal Load"
-                
+                    status_text = "Normal"
+
                 st.markdown(f"""
-                **{row['WorkCenterName']}**: <span style='color:{status_color}'>{status_text}</span>  
-                {row['ActiveOrders']} active orders, {int(row['TotalQuantity']):,} units  
+                **{row['WorkCenterName']}**: <span style='color:{status_color}'>{status_text}</span>
+                {row['ActiveOrders']} active orders, {int(row['TotalQuantity']):,} units
                 Est. time to complete: {row['EstimatedHours']:.1f} hours ({row['EstimatedDays']:.1f} days)
                 """, unsafe_allow_html=True)
-                
-                # Add progress bar to visualize load
-                st.progress(min(row['Utilization'] / 100, 1.0))
+
+                # Add progress bar to visualize load (scale: 0-10 days)
+                st.progress(min(backlog_days / 10, 1.0))
                 st.markdown("---")
         else:
             st.info("No work center bottleneck data available")

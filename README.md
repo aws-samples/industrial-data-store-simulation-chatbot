@@ -1,63 +1,61 @@
 # Manufacturing Operations Hub
 
-Sample code project providing manufacturing operations interfaces powered by Amazon Bedrock and Strands Agents SDK. This project offers a combination of **natural language interaction with MES** (Manufacturing Execution System) and dashboards for daily lean production meetings with AI data analysis.
+Sample project demonstrating manufacturing operations interfaces using Amazon Bedrock and Strands Agents SDK. Includes **natural language queries against MES** (Manufacturing Execution System) data and dashboards for daily lean production meetings.
 
 ![MES chatbot UI](assets/mes-chatbot-example-screenshot.png)
 
 ## Overview
 
-This application provides two integrated interfaces for manufacturing operations and an educational notebook:
+This application provides two interfaces for manufacturing operations and an educational notebook:
 
-1. **MES Insight Chat** - An interactive AI-powered chatbot for analyzing Manufacturing Execution System (MES) data
-2. **Daily Production Meeting** - A structured interface for daily lean meetings and production status reviews
-3. **Educational Jupyter Notebook** - A demonstration of text-to-SQL patterns used in the chatbot
+1. **MES Insight Chat** - AI chatbot for querying Manufacturing Execution System (MES) data
+2. **Daily Production Meeting** - Dashboard for daily lean meetings and production status reviews
+3. **Educational Jupyter Notebook** - Demonstrates text-to-SQL patterns used in the chatbot
 
-The application is built on a synthetic MES database for an e-bike manufacturing facility, providing a realistic environment for exploring production data, inventory management, quality control, and equipment efficiency metrics.
+Built on a synthetic MES database for an e-bike manufacturing facility with production data, inventory, quality control, and equipment metrics.
 
 ## Key Features
 
 ### MES Insight Chat
 
-- **🤖 AI Agents**: Intelligent agents powered by Strands SDK for sophisticated analysis
-- **🧠 Multi-Step Reasoning**: Handles complex queries requiring multiple database operations
-- **🛠️ Smart Error Recovery**: Automatic error diagnosis and intelligent recovery suggestions
-- **📊 AI-Selected Visualizations**: Agents choose the best charts for your data
-- **📚 Educational Guidance**: Learn better query techniques as you explore data
-- **⚡ Real-Time Progress**: See what agents are doing with live progress updates
+- **AI Agents**: Strands SDK agents for multi-step database analysis
+- **Multi-Step Reasoning**: Handles queries requiring multiple database operations
+- **Error Recovery**: Automatic error diagnosis with recovery suggestions
+- **Visualizations**: Agents select appropriate charts based on query results
+- **Progress Tracking**: Live updates showing agent activity
 
 ### Daily Production Meeting
 
-The Daily Production Meeting dashboard eliminates the need for teams to spend a lot of preparation time by, for example, gathering data and running pivot table reports before meetings. Instead, team members arrive with answers to the basic questions already available and an overview of the state of the factory, allowing the meeting to focus on actions and solving problems.
+Reduces meeting prep time by providing pre-computed metrics and factory status. Teams arrive with answers to basic questions already available, allowing meetings to focus on actions and problem-solving.
 
-Key benefits include:
-- Instant access to critical production metrics - no more preparing slides before meetings
-- Real-time dashboards that present a consistent view across all stakeholders
-- Natural language querying of top issues (e.g., "What are the top quality issues from yesterday that we should investigate?")
-- AI-powered insights that highlight patterns humans might miss
-- Function-specific views that allow teams to quickly answer common questions:
+Key benefits:
+- Pre-computed production metrics (no slide preparation needed)
+- Consistent view across stakeholders
+- Natural language queries (e.g., "What are the top quality issues from yesterday?")
+- AI insights highlighting patterns across domains
+- Function-specific views:
   - Production: "What was our completion rate yesterday?"
   - Quality: "Which products have the highest defect rates?"
   - Equipment: "What machines need maintenance today?"
   - Inventory: "Which materials are below reorder level?"
 
-Features include:
-- **📈 Production Summary** - KPIs, completion rates, and current work orders
-- **🔧 Equipment Status** - Machine availability, upcoming maintenance, and downtime impact
-- **⚠️ Quality Issues** - Defect rates, top issues, and problem products
-- **📦 Inventory Alerts** - Items below reorder level with days of supply analysis
-- **👥 Productivity** - Employee and shift performance metrics
-- **🔍 Root Cause Analysis** - Interactive defect analysis tools
-- **🤖 AI Insights** - Predictive analytics and decision intelligence with daily caching for instant loading
-- **📋 Action Items** - Track and manage action items
-- **📝 Meeting Notes** - Document discussions and decisions
-- **📄 Reports** - Generate meeting summaries and weekly reports
-- **⚡ Daily Analysis Caching** - Automated daily analysis generation for lightning-fast dashboard performance
+Features:
+- **Production Summary** - KPIs, completion rates, work orders
+- **Equipment Status** - Machine availability, maintenance, downtime
+- **Quality Issues** - Defect rates, top issues, problem products
+- **Inventory Alerts** - Items below reorder level, days of supply
+- **Productivity** - Employee and shift performance
+- **Root Cause Analysis** - Defect analysis tools
+- **AI Insights** - Daily cached analysis for fast loading
+- **Action Items** - Track action items
+- **Meeting Notes** - Document discussions
+- **Reports** - Meeting summaries and weekly reports
 
 ### System Architecture
 
-This architecture enables natural language queries against manufacturing databases using LLMs. The system follows a schema-first approach where the LLM first learns the database structure before generating SQL queries. When users ask questions in plain English, the application bridges the gap between natural language and structured data by having the LLM generate appropriate SQL, execute it against the MES database, and then transform the results into insightful, business-relevant responses with visualizations. The pattern includes error handling with query reformulation when needed, ensuring robust performance even with complex manufacturing questions.
+The system uses a schema-first text-to-SQL approach: the LLM learns the database structure, generates SQL from natural language queries, executes against the MES database, and returns results with visualizations. Includes error handling with query reformulation.
 
-This is the Sequence Diagram of the chatbot:
+Sequence diagram:
 
 ```mermaid
 sequenceDiagram
@@ -194,24 +192,25 @@ sequenceDiagram
 
 4. **Set Up Daily Analysis Automation (Optional)**
 
-   Since this sample focuses daily lean meeting, you can automate the agentic data analysis by running it daily. This can be done manually, or by setting a systemd job that will run daily (Linux only). Note the comprehensive analysis can take 5m+ so it can be batched to summarize data from the previous day / shift.
+   Automate the daily AI analysis by running it on a schedule. The analysis runs in parallel and takes ~1-2 minutes.
 
    ```bash
    # Set up systemd automation for daily analysis caching (Linux only)
    make setup-automation
-   
-   # Or run manually to test (all platforms)
+
+   # Or run manually (all platforms)
    make run-analysis
    ```
 
-   **Note**: Automated setup (`make setup-automation`) requires systemd (Linux distributions like Amazon Linux 2023, Ubuntu, CentOS, etc.). macOS users can run analysis manually using `make run-analysis`.
+   **Note**: Automated setup (`make setup-automation`) requires systemd (Linux). macOS users can run manually with `make run-analysis`.
 
-    1. **🔄 Generates Fresh Data** - Updates synthetic MES data (90 days historical, 14 days projected)
-    2. **🤖 Runs AI Analysis** - Comprehensive analysis across all production contexts
-    3. **💾 Caches Results** - Stores insights as JSON for instant retrieval
-    4. **🧹 Manages Storage** - Automatically cleans up old cache files
+   The scheduler:
+   1. Generates fresh synthetic MES data (90 days historical, 14 days projected)
+   2. Runs AI analysis across all production contexts (parallel execution)
+   3. Caches results as JSON for fast retrieval
+   4. Cleans up old cache files
 
-   See [Daily Analysis Setup Guide](scripts/DAILY_ANALYSIS_SETUP.md) for detailed configuration.
+   See [Daily Analysis Setup Guide](scripts/DAILY_ANALYSIS_SETUP.md) for configuration.
 
 ## Running the Applications
 
@@ -249,27 +248,27 @@ make help
 
 ## Database and Simulation
 
-The synthetic MES database (`mes.db`) contains a comprehensive manufacturing data model for an e-bike production facility, including:
+The synthetic MES database (`mes.db`) models an e-bike production facility:
 
-- **Products & BOM**: E-bikes, components, subassemblies, and raw materials with hierarchical bill of materials
-- **Inventory & Suppliers**: Stock levels, reorder points, lead times, and supplier information
-- **Work Centers & Machines**: Manufacturing areas, equipment capabilities, capacity, and status
-- **Employees & Shifts**: Personnel profiles, skills, shift assignments, and work schedules
-- **Work Orders**: Production schedules, actual production, and order status tracking
-- **Quality Control**: Inspection results, defects, root causes, severity, and corrective actions
-- **Downtimes**: Equipment failures, planned maintenance, and operational interruptions
-- **OEE Metrics**: Overall Equipment Effectiveness tracking (Availability, Performance, Quality)
-- **Material Consumption**: Component usage, variance reporting, and lot tracking
+- **Products & BOM**: E-bikes, components, subassemblies, raw materials
+- **Inventory & Suppliers**: Stock levels, reorder points, lead times
+- **Work Centers & Machines**: Manufacturing areas, equipment, capacity
+- **Employees & Shifts**: Personnel, skills, shift assignments
+- **Work Orders**: Production schedules, actual production, status
+- **Quality Control**: Inspection results, defects, root causes
+- **Downtimes**: Equipment failures, planned maintenance
+- **OEE Metrics**: Availability, Performance, Quality factors
+- **Material Consumption**: Component usage, variance reporting
 
-The simulation includes realistic manufacturing patterns such as:
-- Production bottlenecks and constraints in specific work centers
-- Maintenance cycles affecting equipment performance over time
-- Quality issues correlated with process variables, equipment, and materials
-- Inventory fluctuations and occasional shortages with lead time impacts
-- Downtime events with appropriate distributions (planned vs. unplanned)
-- Seasonal and weekly production patterns reflecting real-world manufacturing
+Simulation patterns:
+- Production bottlenecks in specific work centers
+- Shift-based completion rate variations (Morning: 88-98%, Night: 70-85%)
+- Maintenance cycles affecting equipment performance
+- Quality issues correlated with equipment and materials
+- Inventory fluctuations and shortages
+- Planned vs. unplanned downtime distributions
 
-Use the configuration options to control the date ranges and data characteristics when generating the database.
+Use `--lookback` and `--lookahead` options to control date ranges when generating data.
 
 ## Project Structure
 
@@ -290,14 +289,22 @@ Use the configuration options to control the date ranges and data characteristic
 │   │   └── bedrock_utils.py     # Amazon Bedrock client (for classic chat)
 │   ├── mes_chat/                # MES Chat application
 │   │   └── chat_interface.py    # AI agent-powered chat interface
-│   ├── mes_agents/              # AI Agents (New!)
-│   │   ├── mes_analysis_agent.py    # Main intelligent agent
+│   ├── mes_agents/              # MES Chat AI Agents
+│   │   ├── mes_analysis_agent.py    # Main analysis agent
 │   │   ├── agent_manager.py         # Agent lifecycle management
-│   │   ├── error_handling.py        # Smart error recovery
-│   │   ├── config.py               # Agent configuration
-│   │   └── tools/                  # Agent tools
-│   │       ├── database_tools.py   # Enhanced SQLite access
-│   │       └── visualization_tools.py # AI-powered visualizations
+│   │   ├── error_handling.py        # Error recovery
+│   │   ├── config.py                # Agent configuration
+│   │   └── tools/                   # Agent tools
+│   │       ├── database_tools.py    # SQLite access
+│   │       └── visualization_tools.py # Visualization tools
+│   ├── production_meeting_agents/   # Production Meeting AI Agents
+│   │   ├── production_meeting_agent.py  # Orchestrator + specialized agents
+│   │   ├── agent_manager.py         # Agent lifecycle management
+│   │   ├── error_handling.py        # Error recovery
+│   │   ├── config.py                # Agent configuration
+│   │   └── tools/                   # Agent tools
+│   │       ├── database_tools.py    # SQLite access
+│   │       └── visualization_tools.py # Visualization tools
 │   ├── production_meeting/      # Production Meeting application
 │   │   ├── dashboard.py         # Main dashboard
 │   │   ├── dashboards/          # Individual dashboard components
@@ -334,21 +341,21 @@ Use the configuration options to control the date ranges and data characteristic
 
 ### MES Insight Chat
 
-The MES Chat interface uses intelligent AI agents powered by the Strands SDK:
+The MES Chat interface uses Strands SDK agents:
 
-**🤖 AI Agent Features:**
-- Intelligent agents that break down complex questions into logical steps
-- Multi-step reasoning for sophisticated manufacturing analysis
-- Smart error recovery with educational guidance
-- Real-time progress tracking and partial results
-- AI-selected visualizations based on data characteristics
+**Features:**
+- Agents break down queries into logical steps
+- Multi-step reasoning for complex analysis
+- Error recovery with suggestions
+- Progress tracking during execution
+- Automatic visualization selection
 
-Example questions for AI agents:
+Example queries:
 
-- "Analyze our production efficiency trends and identify bottlenecks"
+- "Analyze production efficiency trends and identify bottlenecks"
 - "What quality issues correlate with equipment downtime?"
 - "Compare inventory consumption patterns across product lines"
-- "Investigate root causes of recent defects and suggest improvements"
+- "Investigate root causes of recent defects"
 
 ![mes-chatbot-gif](assets/mes-chatbot.gif)
 
@@ -356,30 +363,34 @@ Example questions for AI agents:
 
 The Production Meeting dashboard includes:
 
-1. **Production Summary** - Daily production metrics, completion rates, OEE, and real-time work order status
-2. **Equipment Status** - Machine availability, downtime analysis, and upcoming maintenance schedule
-3. **Quality Issues** - Top defects, problem products, root causes, and trend analysis
-4. **Inventory Alerts** - Critical shortages, days of supply analysis, and material requirements
-5. **Productivity** - Employee and shift performance metrics with comparative analysis
-6. **Root Cause Analysis** - Interactive tools to drill into quality issues and identify patterns
-7. **AI Insights** - AI-powered analytics including predictive insights and decision intelligence
-8. **Action Items** - Track and assign action items to team members
-9. **Meeting Notes** - Document discussions and decisions with templates
-10. **Reports** - Generate comprehensive meeting summaries and weekly reports
+1. **Production Summary** - Completion rates, OEE, work order status
+2. **Equipment Status** - Machine availability, downtime, maintenance schedule
+3. **Quality Issues** - Defects, problem products, root causes, trends
+4. **Inventory Alerts** - Shortages, days of supply, material requirements
+5. **Productivity** - Employee and shift performance
+6. **Root Cause Analysis** - Drill into quality issues and patterns
+7. **AI Insights** - Cached daily analysis with on-demand queries
+8. **Action Items** - Track and assign action items
+9. **Meeting Notes** - Document discussions and decisions
+10. **Reports** - Meeting summaries and weekly reports
 
-The dashboard updates in real-time, providing a consistent view for all stakeholders and eliminating the need for manual report preparation before meetings. This allows teams to focus on problem-solving rather than data collection and reporting.
-
-**⚡ Performance Enhancement**: The AI Insights tab supports both real-time analysis and daily cached results. Set up daily analysis automation to pre-generate comprehensive insights every morning, reducing load times from 2+ minutes to under 1 second.
+**Performance**: The AI Insights tab uses daily cached analysis for sub-second loading. Run `make run-analysis` to pre-generate insights, or use real-time analysis on demand.
 
 ![daily-lean-meetings](assets/ProductionDashboard.gif)
 
 ## AWS Configuration
 
-This application uses Amazon Bedrock for natural language understanding and AI capabilities. The following configuration is required:
+This application uses Amazon Bedrock for AI capabilities.
+
+### Default Model
+
+The application uses **Claude Haiku 4.5** (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) via Amazon Bedrock cross-region inference. Configure in:
+- `app_factory/mes_agents/config.py`
+- `app_factory/production_meeting_agents/config.py`
 
 ### IAM Permissions
 
-Your AWS role needs these specific permissions:
+Your AWS role needs these permissions:
 
 ```json
 {
@@ -390,13 +401,16 @@ Your AWS role needs these specific permissions:
       "Action": [
         "bedrock:ListFoundationModels",
         "bedrock:GetFoundationModel",
-        "bedrock-runtime:InvokeModel"
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
       ],
-      "Resource": "*" //narrow the scope based on where you run this application
+      "Resource": "*"
     }
   ]
 }
 ```
+
+Note: Narrow the Resource scope based on your deployment environment.
 
 ## License
 

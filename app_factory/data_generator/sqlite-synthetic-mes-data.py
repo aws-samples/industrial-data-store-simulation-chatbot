@@ -360,14 +360,20 @@ class MESSimulator:
             
             # Create production batches with interdependent work orders
             self.create_production_batches(
-                session, 
-                product_ids_map, 
-                inventory_ids_map, 
-                work_center_ids, 
-                machine_ids, 
+                session,
+                product_ids_map,
+                inventory_ids_map,
+                work_center_ids,
+                machine_ids,
                 employee_ids
             )
-            
+
+            # Normalize daily completion volumes for consistent production trends
+            self.normalize_daily_completions(session)
+
+            # Rebalance inventory to match production requirements
+            self.rebalance_inventory_for_production(session)
+
             # Insert OEE metrics for machines
             self.insert_oee_metrics(session, machine_ids)
             
@@ -1490,10 +1496,60 @@ class MESSimulator:
                 actual_duration = step_hours * efficiency
                 actual_end = actual_start + timedelta(hours=actual_duration)
                 
-                # Actual production and scrap
-                scrap_rate = random.uniform(0.0, 0.05)  # 0-5% scrap
-                scrap = int(batch_size * scrap_rate)
-                actual_production = batch_size - scrap
+                # Actual production and scrap - with daily and shift variability for realistic demo
+                # Use the date to create consistent day-to-day variation (some "bad days")
+                day_seed = planned_start.toordinal()
+                day_factor = ((day_seed * 7919) % 100) / 100.0  # Deterministic but varied per day
+
+                # Determine shift based on hour of planned start
+                hour = planned_start.hour
+                is_weekend = planned_start.weekday() >= 5
+
+                # Base completion rates by shift - more dramatic differences for demo
+                if is_weekend and hour < 14:
+                    shift_name = "weekend_day"
+                    base_shift_completion = random.uniform(0.75, 0.88)  # Weekend day shifts
+                elif is_weekend:
+                    shift_name = "weekend_night"
+                    base_shift_completion = random.uniform(0.68, 0.82)  # Weekend night - worst
+                elif 6 <= hour < 14:
+                    shift_name = "morning"
+                    base_shift_completion = random.uniform(0.88, 0.98)  # Morning shift best
+                elif 14 <= hour < 22:
+                    shift_name = "afternoon"
+                    base_shift_completion = random.uniform(0.82, 0.94)  # Afternoon moderate
+                else:
+                    shift_name = "night"
+                    base_shift_completion = random.uniform(0.70, 0.85)  # Night shift - poor
+
+                # Daily variation on top of shift patterns
+                if day_factor < 0.15:  # 15% of days are "bad days"
+                    day_modifier = random.uniform(0.85, 0.95)
+                elif day_factor < 0.35:  # 20% of days have moderate issues
+                    day_modifier = random.uniform(0.92, 0.98)
+                else:  # 65% of days are normal
+                    day_modifier = random.uniform(0.97, 1.02)  # Can slightly exceed target
+
+                # Per-order random variation (equipment issues, material problems, etc.)
+                order_variation = random.uniform(0.90, 1.05)
+
+                # Final completion rate
+                completion_rate = base_shift_completion * day_modifier * order_variation
+                completion_rate = min(1.0, max(0.55, completion_rate))  # Cap between 55-100%
+
+                # Calculate actual production before scrap
+                production_before_scrap = int(batch_size * completion_rate)
+
+                # Scrap rate (defects in what was produced)
+                if day_factor < 0.10:  # Bad days also have more scrap
+                    scrap_rate = random.uniform(0.05, 0.15)
+                elif day_factor < 0.30:
+                    scrap_rate = random.uniform(0.02, 0.08)
+                else:
+                    scrap_rate = random.uniform(0.0, 0.03)
+
+                scrap = int(production_before_scrap * scrap_rate)
+                actual_production = production_before_scrap - scrap
                 
                 # Actual setup time
                 setup_time_actual = int(setup_time * random.uniform(0.8, 1.2))
@@ -2114,6 +2170,233 @@ class MESSimulator:
             }
 
             session.execute(self.MaterialConsumption.insert().values(**consumption_record))
+
+    def normalize_daily_completions(self, session):
+        """
+        Normalize daily completion volumes to avoid artificial trends caused by lead time effects.
+
+        The raw data generation creates batches that span multiple days based on lead times.
+        This causes a "peak and decline" pattern where older days have many completions
+        (accumulated from multiple batches) and recent days have few (orders still in progress).
+
+        This function redistributes some completions from over-represented days to under-represented
+        days to create a more realistic, consistent daily production pattern.
+        """
+        logger.info("Normalizing daily completion volumes for consistent production trend")
+
+        from sqlalchemy import text
+
+        # Get completion counts by day for the last 14 days (the period shown in dashboard)
+        completion_query = text("""
+            SELECT
+                date(ActualEndTime) as completion_date,
+                COUNT(*) as order_count,
+                SUM(ActualProduction) as total_production
+            FROM WorkOrders
+            WHERE Status = 'completed'
+            AND ActualEndTime >= date('now', '-14 day')
+            AND ActualEndTime < date('now')
+            GROUP BY date(ActualEndTime)
+            ORDER BY completion_date
+        """)
+
+        result = session.execute(completion_query)
+        daily_completions = list(result.fetchall())
+
+        if not daily_completions:
+            logger.info("No completions to normalize")
+            return
+
+        # Calculate target daily production (average)
+        total_production = sum(row[2] or 0 for row in daily_completions)
+        target_daily = total_production / len(daily_completions)
+
+        logger.info(f"Target daily production: {target_daily:.0f} units across {len(daily_completions)} days")
+
+        # Identify over and under days
+        over_days = []  # Days with significantly more than average
+        under_days = []  # Days with significantly less than average
+
+        for date_str, count, production in daily_completions:
+            if production and production > target_daily * 1.3:  # 30% over target
+                over_days.append((date_str, production - target_daily))
+            elif production and production < target_daily * 0.7:  # 30% under target
+                under_days.append((date_str, target_daily - production))
+
+        if not over_days or not under_days:
+            logger.info("Production already well-distributed, no normalization needed")
+            return
+
+        logger.info(f"Found {len(over_days)} over-producing days and {len(under_days)} under-producing days")
+
+        # For each under-producing day, move some completions from over-producing days
+        for under_date, deficit in under_days:
+            if not over_days:
+                break
+
+            # Find orders from over-producing days that we can reassign
+            for i, (over_date, excess) in enumerate(over_days):
+                if excess <= 0:
+                    continue
+
+                # Calculate how many units to move (up to 50% of the deficit or excess, whichever is smaller)
+                units_to_move = min(deficit * 0.5, excess * 0.5)
+                if units_to_move < 100:  # Don't bother moving tiny amounts
+                    continue
+
+                # Select some orders from the over-producing day to reassign
+                select_orders_query = text("""
+                    SELECT OrderID, ActualProduction, ActualEndTime
+                    FROM WorkOrders
+                    WHERE Status = 'completed'
+                    AND date(ActualEndTime) = :over_date
+                    AND ActualProduction IS NOT NULL
+                    ORDER BY RANDOM()
+                    LIMIT 20
+                """)
+
+                orders_result = session.execute(select_orders_query, {'over_date': over_date})
+                orders_to_move = list(orders_result.fetchall())
+
+                moved_units = 0
+                for order_id, production, old_end_time in orders_to_move:
+                    if moved_units >= units_to_move:
+                        break
+
+                    if production is None:
+                        continue
+
+                    # Calculate new end time (same time of day, different date)
+                    # Handle datetime with or without microseconds
+                    old_end_str = str(old_end_time)
+                    try:
+                        old_datetime = datetime.strptime(old_end_str, '%Y-%m-%d %H:%M:%S.%f')
+                    except ValueError:
+                        old_datetime = datetime.strptime(old_end_str, '%Y-%m-%d %H:%M:%S')
+                    new_date = datetime.strptime(under_date, '%Y-%m-%d')
+                    new_datetime = new_date.replace(
+                        hour=old_datetime.hour,
+                        minute=old_datetime.minute,
+                        second=old_datetime.second
+                    )
+
+                    # Update the order's ActualEndTime
+                    update_query = text("""
+                        UPDATE WorkOrders
+                        SET ActualEndTime = :new_end_time
+                        WHERE OrderID = :order_id
+                    """)
+                    session.execute(update_query, {
+                        'new_end_time': new_datetime,
+                        'order_id': order_id
+                    })
+
+                    moved_units += production
+
+                if moved_units > 0:
+                    logger.info(f"Moved {moved_units:.0f} units from {over_date} to {under_date}")
+                    over_days[i] = (over_date, excess - moved_units)
+                    deficit -= moved_units
+
+                if deficit <= 0:
+                    break
+
+        session.commit()
+        logger.info("Daily completion normalization complete")
+
+    def rebalance_inventory_for_production(self, session):
+        """
+        Rebalance inventory levels to realistically support scheduled production.
+
+        After work orders and BOM are created, inventory levels may be unrealistically
+        low compared to production demand. This function:
+        1. Calculates material requirements for scheduled work orders
+        2. Sets inventory to cover 80-120% of 7-day demand for most items
+        3. Keeps 3-4 items intentionally in shortage for demo purposes
+        4. Sets reorder levels based on weekly consumption rate
+        """
+        logger.info("Rebalancing inventory levels based on production requirements")
+
+        from sqlalchemy import text
+
+        # Get material requirements for scheduled work orders in next 7 days
+        requirements_query = text("""
+            SELECT
+                i.ItemID,
+                i.Name,
+                i.Quantity as CurrentQuantity,
+                i.LeadTime,
+                COALESCE(SUM(bom.Quantity * wo.Quantity), 0) as RequiredQuantity
+            FROM Inventory i
+            LEFT JOIN BillOfMaterials bom ON bom.ComponentID = i.ItemID
+            LEFT JOIN WorkOrders wo ON wo.ProductID = bom.ProductID
+                AND wo.Status = 'scheduled'
+                AND wo.PlannedStartTime <= date('now', '+7 day')
+            GROUP BY i.ItemID, i.Name, i.Quantity, i.LeadTime
+        """)
+
+        result = session.execute(requirements_query)
+        materials = list(result.fetchall())
+
+        if not materials:
+            logger.info("No materials to rebalance")
+            return
+
+        # Select 3-4 items to keep in shortage for demo purposes
+        materials_with_demand = [m for m in materials if m[4] and m[4] > 0]
+        num_shortage_items = min(4, len(materials_with_demand))
+        shortage_items = set()
+
+        if materials_with_demand:
+            import random
+            shortage_sample = random.sample(materials_with_demand, num_shortage_items)
+            shortage_items = {m[0] for m in shortage_sample}  # Item IDs
+            logger.info(f"Selected {num_shortage_items} items for intentional shortage: {[m[1] for m in shortage_sample]}")
+
+        # Update inventory levels
+        for item_id, name, current_qty, lead_time, required_qty in materials:
+            if required_qty is None or required_qty == 0:
+                # No demand - keep current quantity but ensure reasonable reorder level
+                new_quantity = max(50, current_qty or 50)
+                weekly_rate = 10  # Default
+            else:
+                weekly_rate = required_qty / 7  # Daily consumption rate * 7
+
+                if item_id in shortage_items:
+                    # Shortage items: only 5-20% of weekly requirement
+                    coverage = random.uniform(0.05, 0.20)
+                    new_quantity = int(required_qty * coverage)
+                else:
+                    # Normal items: 100-140% of weekly requirement to ensure adequate supply
+                    coverage = random.uniform(1.00, 1.40)
+                    new_quantity = int(required_qty * coverage)
+
+            # Set reorder level based on lead time + safety stock (1 week)
+            # Reorder when stock falls below (lead_time_days + 7) * daily_consumption
+            daily_rate = weekly_rate / 7
+            safety_days = 7  # 1 week safety stock
+            reorder_level = int(daily_rate * (lead_time + safety_days))
+            reorder_level = max(10, reorder_level)  # Minimum reorder level
+
+            # For shortage items, set reorder level much higher than current stock
+            if item_id in shortage_items:
+                reorder_level = max(reorder_level, int(new_quantity * 5))  # 5x current stock
+
+            # Update the inventory record
+            update_query = text("""
+                UPDATE Inventory
+                SET Quantity = :quantity, ReorderLevel = :reorder_level
+                WHERE ItemID = :item_id
+            """)
+
+            session.execute(update_query, {
+                'quantity': new_quantity,
+                'reorder_level': reorder_level,
+                'item_id': item_id
+            })
+
+        session.commit()
+        logger.info("Inventory rebalancing complete")
 
     def insert_oee_metrics(self, session, machine_ids):
         """Insert OEE metrics with realistic patterns related to maintenance cycles."""

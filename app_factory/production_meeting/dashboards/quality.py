@@ -17,8 +17,8 @@ db_manager = DatabaseManager()
 
 # Import shared color configuration
 from .color_config import (
-    STREAMLIT_COLORS, QUALITY_COLORS, COLOR_SCALES,
-    get_chart_template, apply_theme_compatibility
+    DEFAULT_COLORS, QUALITY_COLORS, STATUS_COLORS,
+    apply_theme_compatibility
 )
 
 def create_enhanced_quality_chart(df, chart_type, x_col, y_col, title, color_col=None):
@@ -31,7 +31,7 @@ def create_enhanced_quality_chart(df, chart_type, x_col, y_col, title, color_col
                 y=y_col,
                 color=color_col,
                 title=title,
-                color_continuous_scale=COLOR_SCALES['reds'],
+                color_continuous_scale='Reds',
                 text=y_col
             )
         else:
@@ -40,7 +40,7 @@ def create_enhanced_quality_chart(df, chart_type, x_col, y_col, title, color_col
                 x=x_col,
                 y=y_col,
                 title=title,
-                color_discrete_sequence=STREAMLIT_COLORS
+                color_discrete_sequence=DEFAULT_COLORS
             )
             
         fig.update_traces(
@@ -56,15 +56,15 @@ def create_enhanced_quality_chart(df, chart_type, x_col, y_col, title, color_col
             orientation='h',
             color=color_col if color_col else None,
             title=title,
-            color_continuous_scale=COLOR_SCALES['reds'] if color_col else None,
-            color_discrete_sequence=STREAMLIT_COLORS if not color_col else None
+            color_continuous_scale='Reds' if color_col else None,
+            color_discrete_sequence=DEFAULT_COLORS if not color_col else None
         )
         
         fig.update_layout(yaxis={'categoryorder':'total ascending'})
         
     # Apply consistent formatting
     fig.update_layout(
-        template="plotly_white",
+        template="plotly",
         height=400,
         title=dict(font=dict(size=16)),
         legend=dict(
@@ -105,8 +105,8 @@ def quality_dashboard():
     # Get yesterday's quality data
     yesterday_quality = db_manager.get_quality_summary(days_back=1, range_days=1)
     
-    # Get comparison period quality data
-    comparison_quality = db_manager.get_quality_summary(days_back=days_back, range_days=days_back)
+    # Get comparison period quality data (for Yesterday: day before yesterday, for weekly: previous week, etc.)
+    comparison_quality = db_manager.get_quality_summary(days_back=compare_days, range_days=days_back)
     
     if not yesterday_quality.empty:
         # Summary metrics - enhanced with targets and trends
@@ -318,29 +318,12 @@ def quality_dashboard():
                     
                     specific_df = pd.DataFrame(specific_result["rows"])
                     
-                    # Add severity indicators
-                    def color_severity(val):
-                        try:
-                            severity = float(val)
-                            if severity >= 4:
-                                return 'background-color: red; color: white'
-                            elif severity >= 3:
-                                return 'background-color: orange; color: black'
-                            else:
-                                return 'background-color: yellow; color: black'
-                        except:
-                            return ''
-                    
                     # Format the dataframe for display
                     display_df = specific_df.copy()
                     display_df['AvgSeverity'] = display_df['AvgSeverity'].round(1)
-                    display_df['AvgSeverity'] = display_df['AvgSeverity'].apply(lambda x: f"{x:.1f}") #somehow just .round didnt work, so explicitly formatting as string 
-                    
-                    # Display the styled dataframe
-                    st.dataframe(
-                        display_df.style.applymap(color_severity, subset=['AvgSeverity']),
-                        use_container_width=True
-                    )
+
+                    # Display the dataframe (plain styling works in both themes)
+                    st.dataframe(display_df, use_container_width=True)
                     
                     # Create actionable suggestions
                     st.markdown("##### Suggested Actions:")
@@ -400,7 +383,7 @@ def quality_dashboard():
                         y=trend_df['AvgDefectRate'],
                         name='Defect Rate',
                         mode='lines+markers',
-                        line=dict(color=STREAMLIT_COLORS[0], width=3),  # Red
+                        line=dict(color=DEFAULT_COLORS[0], width=3),  # Red
                         marker=dict(size=8),
                         hovertemplate='<b>Defect Rate</b><br>Date: %{x}<br>Rate: %{y:.2f}%<extra></extra>'
                     )
@@ -413,7 +396,7 @@ def quality_dashboard():
                         y=trend_df['AvgYieldRate'],
                         name='Yield Rate',
                         mode='lines+markers',
-                        line=dict(color=STREAMLIT_COLORS[3], width=3),  # Green
+                        line=dict(color=DEFAULT_COLORS[3], width=3),  # Green
                         marker=dict(size=8),
                         yaxis='y2',
                         hovertemplate='<b>Yield Rate</b><br>Date: %{x}<br>Rate: %{y:.2f}%<extra></extra>'
@@ -426,7 +409,7 @@ def quality_dashboard():
                         x=trend_df['InspectionDate'],
                         y=trend_df['InspectionCount'],
                         name='Inspections',
-                        marker_color=STREAMLIT_COLORS[2],  # Blue
+                        marker_color=DEFAULT_COLORS[2],  # Blue
                         opacity=0.3,
                         yaxis='y3',
                         hovertemplate='<b>Inspections</b><br>Date: %{x}<br>Count: %{y}<extra></extra>'
@@ -474,7 +457,7 @@ def quality_dashboard():
                         anchor='free',
                         range=[0, trend_df['InspectionCount'].max() * 1.2]
                     ),
-                    template="plotly_white",
+                    template="plotly",
                     height=450,
                     legend=dict(
                         orientation="h",
@@ -652,7 +635,7 @@ def quality_dashboard():
                         x1=len(wc_df)-0.5,
                         y0=0,
                         y1=0,
-                        line=dict(color="black", width=1),
+                        line=dict(color="gray", width=1),
                     )
                     
                     # Improve layout

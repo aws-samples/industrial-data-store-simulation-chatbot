@@ -9,10 +9,14 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from .config import ProductionMeetingConfig, default_config
 from .error_handling import ProductionMeetingErrorHandler, ProductionMeetingError
 from .production_meeting_agent import production_meeting_analysis_tool
+
+# Thread pool for parallel agent execution
+_executor = ThreadPoolExecutor(max_workers=5)
 
 
 logger = logging.getLogger(__name__)
@@ -86,17 +90,17 @@ class ProductionMeetingAgentManager:
     async def process_query(self, query: str, context: Optional[Dict] = None) -> Dict[str, Any]:
         """
         Process a query using the production meeting agent tools.
-        
+
         Args:
             query: The user query to process
             context: Optional context information
-            
+
         Returns:
             Dictionary containing the analysis results
         """
         if not self._is_initialized:
             await self.initialize()
-        
+
         if not self.config.agent_enabled:
             return {
                 'success': False,
@@ -109,18 +113,23 @@ class ProductionMeetingAgentManager:
                     'Verify Strands SDK installation'
                 ]
             }
-        
+
         try:
             start_time = datetime.now()
-            
+
             # Update session context
             self._update_session_context(query, context)
-            
-            # Use the production meeting analysis tool
-            analysis_result = production_meeting_analysis_tool(query)
-            
+
+            # Run the synchronous agent tool in thread pool for true async parallelism
+            loop = asyncio.get_event_loop()
+            analysis_result = await loop.run_in_executor(
+                _executor,
+                production_meeting_analysis_tool,
+                query
+            )
+
             execution_time = (datetime.now() - start_time).total_seconds()
-            
+
             # Format response following MES agent manager pattern
             response = {
                 'success': True,
@@ -137,10 +146,10 @@ class ProductionMeetingAgentManager:
                 },
                 'progress_updates': self.get_progress_updates()
             }
-            
+
             logger.info(f"Query processed successfully in {execution_time:.2f} seconds")
             return response
-            
+
         except Exception as e:
             logger.error(f"Error processing query: {e}")
             return self.error_handler.handle_error(e, {'query': query, 'context': context})

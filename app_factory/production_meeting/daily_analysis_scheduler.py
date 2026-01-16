@@ -114,108 +114,107 @@ class DailyAnalysisScheduler:
         return self.cache_dir / f"daily_analysis_{date_str}.json"
     
     async def generate_daily_analysis(self) -> Dict[str, Any]:
-        """Generate comprehensive daily analysis"""
-        logger.info("Starting daily analysis generation")
+        """Generate comprehensive daily analysis using parallel execution"""
+        logger.info("Starting daily analysis generation (parallel mode)")
         start_time = datetime.now()
-        
+
         analysis_results = {
             "generated_at": start_time.isoformat(),
             "analysis_date": start_time.strftime("%Y-%m-%d"),
             "analyses": {}
         }
-        
-        # Define analysis types to run
+
+        # Define analysis types - simplified queries for faster processing
         analysis_types = [
+            {
+                "name": "executive_summary",
+                "context": "production",
+                "query": """Executive summary for daily meeting. Format as 3-5 bullet points with emoji indicators (🔴 critical, 🟠 warning, 🟢 good). Include only the most critical issues across production, quality, equipment, and inventory. Under 200 words."""
+            },
             {
                 "name": "production_summary",
                 "context": "production",
-                "query": """Generate a comprehensive daily production summary covering:
-                1. Overall production status and key metrics compared to historical trends
-                2. Critical issues requiring immediate attention
-                3. Top recommendations for today's focus
-                
-                Be concise but thorough - readable in under 60 seconds. Focus on actionable information."""
+                "query": """Daily production status: completion rates, bottlenecks, and critical work orders. Be concise - key metrics and top 3 issues only."""
             },
             {
                 "name": "quality_insights",
-                "context": "quality", 
-                "query": """Analyze current quality metrics and provide insights on:
-                1. Quality metrics and defect patterns
-                2. Historical quality trends and performance changes
-                3. Critical quality issues and recommendations for improvement
-                
-                Focus on actionable information for production meetings."""
+                "context": "quality",
+                "query": """Today's quality metrics: defect rates, yield, and quality issues requiring attention. Focus on actionable items only."""
             },
             {
                 "name": "equipment_status",
                 "context": "equipment",
-                "query": """Analyze current equipment status and provide insights on:
-                1. Machine availability and performance
-                2. Historical equipment trends and performance changes
-                3. Critical maintenance issues and recommendations
-                
-                Focus on actionable information for production meetings."""
+                "query": """Equipment status: OEE metrics, machines down or at risk, maintenance priorities. Key numbers and actions only."""
             },
             {
                 "name": "inventory_analysis",
                 "context": "inventory",
-                "query": """Analyze current inventory status and provide insights on:
-                1. Critical inventory shortages or concerns
-                2. Historical consumption patterns and trends
-                3. Recommendations for inventory management
-                
-                Focus on actionable information for production meetings."""
+                "query": """Inventory status: items below reorder level, stock-outs, and materials at risk. Critical shortages only."""
             }
         ]
-        
-        # Generate each analysis
-        for analysis_config in analysis_types:
+
+        # Run all analyses in PARALLEL for speed
+        async def run_single_analysis(analysis_config):
+            """Run a single analysis and return result"""
             try:
-                logger.info(f"Generating {analysis_config['name']} analysis")
-                
-                # Create agent context
+                logger.info(f"Starting {analysis_config['name']} analysis")
+                analysis_start = datetime.now()
+
                 agent_context = {
                     'context_type': analysis_config['context'],
-                    'include_historical': True,
+                    'include_historical': False,  # Faster without historical
                     'dashboard_data': {},
-                    'query_type': 'comprehensive_daily'
+                    'query_type': 'quick_daily'
                 }
-                
-                # Process query using agent manager
+
                 response = await self.agent_manager.process_query(
-                    analysis_config['query'], 
+                    analysis_config['query'],
                     agent_context
                 )
-                
+
+                execution_time = (datetime.now() - analysis_start).total_seconds()
+
                 if response.get('success', False):
-                    analysis_results["analyses"][analysis_config['name']] = {
+                    logger.info(f"Completed {analysis_config['name']} in {execution_time:.1f}s")
+                    return analysis_config['name'], {
                         "analysis": response.get('analysis', ''),
-                        "execution_time": response.get('execution_time', 0),
+                        "execution_time": execution_time,
                         "capabilities_used": response.get('capabilities_used', []),
                         "follow_up_suggestions": response.get('follow_up_suggestions', []),
                         "generated_at": datetime.now().isoformat()
                     }
-                    logger.info(f"Successfully generated {analysis_config['name']} analysis")
                 else:
-                    logger.warning(f"Failed to generate {analysis_config['name']} analysis: {response.get('error', 'Unknown error')}")
-                    analysis_results["analyses"][analysis_config['name']] = {
+                    logger.warning(f"Failed {analysis_config['name']}: {response.get('error', 'Unknown')}")
+                    return analysis_config['name'], {
                         "error": response.get('error', 'Analysis failed'),
                         "generated_at": datetime.now().isoformat()
                     }
-                    
+
             except Exception as e:
-                logger.error(f"Error generating {analysis_config['name']} analysis: {e}")
-                analysis_results["analyses"][analysis_config['name']] = {
+                logger.error(f"Error in {analysis_config['name']}: {e}")
+                return analysis_config['name'], {
                     "error": str(e),
                     "generated_at": datetime.now().isoformat()
                 }
-        
+
+        # Execute all analyses in parallel using asyncio.gather
+        tasks = [run_single_analysis(config) for config in analysis_types]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect results
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Parallel task failed: {result}")
+            else:
+                name, data = result
+                analysis_results["analyses"][name] = data
+
         # Add execution summary
         total_time = (datetime.now() - start_time).total_seconds()
         analysis_results["total_execution_time"] = total_time
         analysis_results["completed_at"] = datetime.now().isoformat()
-        
-        logger.info(f"Daily analysis completed in {total_time:.2f} seconds")
+
+        logger.info(f"Daily analysis completed in {total_time:.2f} seconds (parallel)")
         return analysis_results
     
     def save_analysis_cache(self, analysis_results: Dict[str, Any], date: datetime = None):
