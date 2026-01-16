@@ -485,9 +485,9 @@ class MESSimulator:
             "Electric Motors", "Chainring Bolts"
         ]
         
-        # Select a subset of items that will have shortages (reduce from 3 to 2)
+        # Select a subset of items that will have critical shortages for demo visibility
         random.shuffle(shortage_candidates)
-        active_shortage_items = shortage_candidates[:2]  # Only 2 items will have shortages
+        active_shortage_items = shortage_candidates[:3]  # 3 items will have critical shortages
         
         # Store inventory status for reporting
         inventory_status = {
@@ -535,9 +535,9 @@ class MESSimulator:
             else:
                 quantity = random.randint(40, 120)   # Much higher quantities
                 
-            # Adjust quantities for shortage items - but still reasonable levels
+            # Adjust quantities for shortage items - critically low for visible demo alerts
             if name in active_shortage_items:
-                quantity = random.randint(25, 50)    # Higher shortage quantities
+                quantity = random.randint(5, 15)    # Critical shortage - very low quantities
                 
             # Set reorder levels based on item type - very conservative reorder levels
             if name in critical_raw_materials:
@@ -545,8 +545,8 @@ class MESSimulator:
                 reorder_level = int(quantity * random.uniform(0.05, 0.15))  # Very conservative
                 inventory_status["well_stocked"] += 1
             elif name in active_shortage_items:
-                # Shortage items - reorder level above current stock (true shortages)
-                reorder_level = int(quantity * random.uniform(1.05, 1.2))  # Just slightly above stock
+                # Shortage items - reorder level significantly above current stock (visible critical shortage)
+                reorder_level = random.randint(50, 80)  # Much higher than 5-15 units in stock
                 inventory_status["critical"] += 1
             else:
                 # Determine stock status category - heavily weighted toward well-stocked
@@ -829,6 +829,8 @@ class MESSimulator:
         # Typical bottlenecks are often in specialized processes
         bottleneck_candidates = ["Battery Production", "Motor Assembly", "Frame Fabrication"]
         bottleneck_work_center = random.choice(bottleneck_candidates)
+        # Store as instance variable for use in downtime generation
+        self.bottleneck_work_center = bottleneck_work_center
         
         # Seasonal capacity factors - simulate increased/decreased capacity based on time of year
         current_month = datetime.now().month
@@ -1806,17 +1808,29 @@ class MESSimulator:
                 elif days_employed > 730:  # Experienced (>2 years)
                     employee_quality_factor = 0.8
         
-        # Add occasional quality "incidents" with spikes in defect rates
+        # Add quality "incidents" with spikes in defect rates
+        # Demo feature: Last week (7-14 days ago) has a concentrated quality incident
         quality_incident = False
         quality_incident_factor = 1.0
-        
-        if random.random() < 0.05:  # 5% chance of quality incident
+        incident_name = None
+
+        # Check if this work order falls in "last week" window for demo incident
+        qc_check_date = work_order.ActualEndTime if status == 'completed' else work_order.PlannedStartTime
+        days_ago = (datetime.now() - qc_check_date).days if qc_check_date else 0
+
+        # Last week incident: 7-14 days ago has high probability of quality issues
+        if 7 <= days_ago <= 14:
+            # 40% chance of incident during "last week" - creates visible spike in data
+            if random.random() < 0.40:
+                quality_incident = True
+                quality_incident_factor = random.uniform(3.0, 6.0)  # Higher severity
+                incident_name = "Component supplier quality issue - bad batch from supplier"
+        elif random.random() < 0.03:  # 3% baseline chance for other periods
             quality_incident = True
-            quality_incident_factor = random.uniform(2.0, 5.0)
+            quality_incident_factor = random.uniform(2.0, 4.0)
             incident_name = random.choice([
-                "Component supplier quality issue", 
-                "Calibration drift", 
-                "Process change adaptation", 
+                "Calibration drift",
+                "Process change adaptation",
                 "New material batch variation"
             ])
         
@@ -2060,598 +2074,47 @@ class MESSimulator:
         
         return result
     
-    def create_material_consumption(self, session, order_id, product_id, batch_size, 
+    def create_material_consumption(self, session, order_id, product_id, batch_size,
                        status, lot_number, consumption_date, inventory_ids_map):
-        """Create material consumption records"""
+        """Create material consumption records with simple variance."""
         # Get the bill of materials for this product
         bom_items = session.execute(
             self.BillOfMaterials.select().where(
                 self.BillOfMaterials.c.ProductID == product_id
             )
         ).fetchall()
-        
-        # Define critical items with special consumption patterns
-        critical_items = ["Steel Bolts", "Rubber Grips", "Aluminum Tubing", "Lithium-ion Cells"]
-        
-        # Define commonly-used items that shouldn't be depleted too much
-        common_items = ["Chain Links", "Wheel Spokes", "Tire Rubber", "Brake Cables", "Gear Shifters"]
-        
-        # Items that are more aggressively consumed (specialized components)
-        specialized_items = ["Control Circuits", "Microcontrollers", "Battery Casings", "Electric Motors"]
-        
-        # Add cyclic patterns - some days have higher consumption
-        day_of_week = consumption_date.weekday()
-        weekend_factor = 0.7 if day_of_week >= 5 else 1.0  # Lower consumption on weekends
-        
-        # Monthly pattern - higher at month start and end
-        day_of_month = consumption_date.day
-        month_days = 30  # Approximation
-        monthly_factor = 1.0
-        if day_of_month < 5:
-            monthly_factor = 1.2  # Higher at month start (planning new batches)
-        elif day_of_month > month_days - 5:
-            monthly_factor = 1.15  # Higher at month end (completing orders)
-        
-        # If no BOM items, create consumption from default items
+
         if not bom_items:
-            default_items = ["Steel Bolts", "Aluminum Tubing", "Rubber Grips"]
-            used_items = random.sample(default_items, random.randint(1, len(default_items)))
-            
-            for item_name in used_items:
-                if item_name not in inventory_ids_map:
-                    continue
-                    
-                item_id = inventory_ids_map[item_name]
-                
-                # Base planned quantity
-                planned_qty = random.randint(1, 8) * batch_size / 100
-                
-                # Apply consumption patterns for critical items
-                if item_name in critical_items:
-                    # Batch consumption patterns (occasionally larger batches)
-                    if random.random() < 0.10:
-                        planned_qty *= random.uniform(1.3, 2.0)
-                    
-                    # Apply cyclic factors
-                    planned_qty *= weekend_factor * monthly_factor
-                    
-                    # Reduced variability for critical items
-                    variance = random.uniform(-0.05, 0.15)
-                elif item_name in common_items:
-                    # Common items have moderate consumption
-                    variance = random.uniform(-0.05, 0.08)
-                else:
-                    variance = random.uniform(-0.03, 0.07)
-                
-                actual_qty = planned_qty * (1 + variance)
-                
-                # Only completed orders have full actual consumption
-                if status == 'completed':
-                    actual_value = actual_qty
-                    variance_percent = variance * 100
-                else:
-                    # In-progress orders have partial consumption with more variance
-                    progress = random.uniform(0.1, 0.9)
-                    progress_variance = random.uniform(-0.08, 0.08)
-                    actual_value = planned_qty * (progress + progress_variance)
-                    actual_value = max(0, actual_value)  # Ensure non-negative
-                    variance_percent = (actual_value / planned_qty - 1) * 100
-                
-                consumption_record = {
-                    'OrderID': order_id,
-                    'ItemID': item_id,
-                    'PlannedQuantity': round(planned_qty, 2),
-                    'ActualQuantity': round(actual_value, 2),
-                    'VariancePercent': round(variance_percent, 2),
-                    'ConsumptionDate': consumption_date,
-                    'LotNumber': lot_number
-                }
-                
-                session.execute(self.MaterialConsumption.insert().values(**consumption_record))
-                
-                # Reduce inventory for completed consumptions
-                if status == 'completed':
-                    # Get current inventory
-                    inventory_item = session.execute(
-                        self.Inventory.select().where(
-                            self.Inventory.c.ItemID == item_id
-                        )
-                    ).fetchone()
-                    
-                    if inventory_item:
-                        if item_name in critical_items:
-                            # For critical items, keep reasonable reserves above reorder level
-                            min_reserve = max(inventory_item.ReorderLevel * 2, int(inventory_item.Quantity * 0.2))
-                            available_qty = max(0, inventory_item.Quantity - min_reserve)
-                            consumption = min(int(actual_value), available_qty)
-                            new_qty = inventory_item.Quantity - consumption
-                        else:
-                            # For other items, allow consumption but stay above reorder level
-                            min_reserve = max(inventory_item.ReorderLevel, int(inventory_item.Quantity * 0.1))
-                            available_qty = max(0, inventory_item.Quantity - min_reserve)
-                            consumption = min(int(actual_value), available_qty)
-                            new_qty = inventory_item.Quantity - consumption
-                        
-                        session.execute(
-                            self.Inventory.update().where(
-                                self.Inventory.c.ItemID == item_id
-                            ).values(
-                                Quantity=new_qty
-                            )
-                        )
             return
-        
-        # Process actual BOM items
+
         for bom_item in bom_items:
             component_id = bom_item.ComponentID
-            
-            # Get component info for pattern detection
-            component = session.execute(
-                self.Inventory.select().where(
-                    self.Inventory.c.ItemID == component_id
-                )
-            ).fetchone()
-            
-            if not component:
-                continue
-                
-            component_name = component.Name
-            is_critical = component_name in critical_items
-            is_common = component_name in common_items
-            is_specialized = component_name in specialized_items
-            
-            # Calculate planned quantity
-            planned_qty = bom_item.Quantity * batch_size
-            
-            # Add scrap factor to planned quantity, but reduce it slightly
-            scrap_factor = bom_item.ScrapFactor * 0.9
-            planned_qty = planned_qty * (1 + scrap_factor)
-            
-            # Apply consumption patterns based on item type
-            if is_critical:
-                # Batch consumption patterns - reduced frequency and magnitude
-                if random.random() < 0.10:
-                    planned_qty *= random.uniform(1.1, 1.5)
-                
-                # Apply cyclic factors
-                planned_qty *= weekend_factor * monthly_factor
-                
-                variance = random.uniform(-0.05, 0.12)
-            elif is_specialized:
-                # Higher variability for specialized components that tend to deplete faster
-                variance = random.uniform(-0.05, 0.15)
-            elif is_common:
-                # Common items have moderate and stable consumption
-                variance = random.uniform(-0.03, 0.06)
-            else:
-                # Regular variability for non-critical, non-specialized items
-                variance = random.uniform(-0.04, 0.08)
-            
-            actual_qty = planned_qty * (1 + variance)
-            
-            # Only completed orders have full actual consumption
+
+            # Calculate planned quantity from BOM
+            planned_qty = bom_item.Quantity * batch_size * (1 + bom_item.ScrapFactor)
+
+            # Simple variance: actual is 90-110% of planned
+            variance = random.uniform(-0.10, 0.10)
+
             if status == 'completed':
-                actual_value = actual_qty
-                variance_percent = variance * 100
+                actual_qty = planned_qty * (1 + variance)
             else:
-                # In-progress orders have partial consumption
-                progress = random.uniform(0.1, 0.9)
-                # Add more variance to in-progress consumption but keep it smaller
-                progress_variance = random.uniform(-0.08, 0.08)
-                actual_value = planned_qty * (progress + progress_variance)
-                actual_value = max(0, actual_value)  # Ensure non-negative
-                variance_percent = (actual_value / planned_qty - 1) * 100
-            
+                # In-progress: partial consumption
+                progress = random.uniform(0.3, 0.8)
+                actual_qty = planned_qty * progress * (1 + variance)
+
             consumption_record = {
                 'OrderID': order_id,
                 'ItemID': component_id,
                 'PlannedQuantity': round(planned_qty, 2),
-                'ActualQuantity': round(actual_value, 2),
-                'VariancePercent': round(variance_percent, 2),
+                'ActualQuantity': round(max(0, actual_qty), 2),
+                'VariancePercent': round(variance * 100, 2),
                 'ConsumptionDate': consumption_date,
                 'LotNumber': lot_number
             }
-            
+
             session.execute(self.MaterialConsumption.insert().values(**consumption_record))
-            
-            # Reduce inventory for completed consumptions - more conservative approach
-            if status == 'completed':
-                # Get current inventory
-                inventory_item = session.execute(
-                    self.Inventory.select().where(
-                        self.Inventory.c.ItemID == component_id
-                    )
-                ).fetchone()
-                
-                if inventory_item:
-                    if is_critical:
-                        # For critical items, maintain buffer above reorder level
-                        min_reserve = max(inventory_item.ReorderLevel * 2, int(inventory_item.Quantity * 0.25))
-                        available_qty = max(0, inventory_item.Quantity - min_reserve)
-                        consumption = min(int(actual_value), available_qty)
-                        new_qty = inventory_item.Quantity - consumption
-                    elif is_common:
-                        # For common items, maintain reasonable buffer
-                        min_reserve = max(inventory_item.ReorderLevel * 1.5, int(inventory_item.Quantity * 0.15))
-                        available_qty = max(0, inventory_item.Quantity - min_reserve)
-                        consumption = min(int(actual_value), available_qty)
-                        new_qty = inventory_item.Quantity - consumption
-                    else:
-                        # For other items, allow consumption but stay above reorder level
-                        min_reserve = max(inventory_item.ReorderLevel, int(inventory_item.Quantity * 0.1))
-                        available_qty = max(0, inventory_item.Quantity - min_reserve)
-                        consumption = min(int(actual_value), available_qty)
-                        new_qty = inventory_item.Quantity - consumption
-                    
-                    session.execute(
-                        self.Inventory.update().where(
-                            self.Inventory.c.ItemID == component_id
-                        ).values(
-                            Quantity=new_qty
-                        )
-                    )
-    
-    def create_downtime_record(self, session, machine_id, order_id, status, 
-                        start_time, end_time, employee_ids):
-        """Create a more realistic downtime record with patterns related to maintenance."""
-        # Get machine info to check maintenance history
-        machine = session.execute(
-            self.Machines.select().where(
-                self.Machines.c.MachineID == machine_id
-            )
-        ).fetchone()
-        
-        if not machine:
-            return
-        
-        # Calculate days since last maintenance
-        days_since_maintenance = (datetime.now() - machine.LastMaintenanceDate).days if machine.LastMaintenanceDate else 30
-        
-        # Machine type-specific breakdown probability adjustment
-        breakdown_factor = 1.0
-        if machine.Type == "Frame Welding":
-            breakdown_factor = 1.2  # Old technology, more issues
-        elif machine.Type == "Battery Assembly":
-            breakdown_factor = 1.1  # Precision work, some issues
-        elif machine.Type == "Quality Control":
-            breakdown_factor = 0.7  # Newer technology, fewer issues
-        elif machine.Type == "Motor Assembly":
-            breakdown_factor = 1.05  # Complex assembly, some issues
-        elif machine.Type == "Packaging":
-            breakdown_factor = 0.8  # Simple operation, fewer issues
-        
-        # Machine age factor - older machines have more issues
-        if machine.InstallationDate:
-            days_old = (datetime.now() - machine.InstallationDate).days
-            age_years = days_old / 365.0
-            
-            if age_years > 5:
-                age_factor = 1.5  # Much higher breakdown rate for old machines
-            elif age_years > 3:
-                age_factor = 1.3  # Higher breakdown rate
-            elif age_years > 1:
-                age_factor = 1.0  # Baseline
-            else:
-                age_factor = 0.7  # New machines have fewer issues
-        else:
-            age_factor = 1.0
-        
-        # Base probability of unplanned downtime increases with days since maintenance
-        # Early days (0-15): very low probability
-        # Mid-term (16-30): moderate increase
-        # Late (31+): higher probability
-        if days_since_maintenance < 15:
-            unplanned_probability = 0.05 * breakdown_factor * age_factor
-        elif days_since_maintenance < 30:
-            unplanned_probability = 0.15 * breakdown_factor * age_factor
-        else:
-            # Exponential increase in probability after maintenance is due
-            overdue_days = days_since_maintenance - 30
-            overdue_factor = 1.0 + (overdue_days * 0.02)  # 2% increase per overdue day
-            unplanned_probability = min(0.5, 0.15 * breakdown_factor * age_factor * overdue_factor)
-        
-        # Determine if planned or unplanned based on this curve
-        category = random.choices(
-            ['planned', 'unplanned'], 
-            weights=[max(0.1, 1 - unplanned_probability), unplanned_probability], 
-            k=1
-        )[0]
-        
-        # Get downtime reasons for this category
-        reasons = self.data_pools['downtime_reasons'][category]
-        
-        # Weight reasons based on machine type, age, and maintenance status
-        if category == 'unplanned':
-            if days_since_maintenance > 30:
-                # More serious breakdowns for machines needing maintenance
-                weighted_reasons = {
-                    "Equipment Failure": 50,
-                    "Power Outage": 5,
-                    "Material Shortage": 10,
-                    "Operator Absence": 5,
-                    "Quality Issue": 10,
-                    "Tool Breakage": 15,
-                    "Software Error": 5,
-                    "Safety Incident": 5,
-                    "Unexpected Maintenance": 30  # Increased for overdue maintenance
-                }
-            elif machine.InstallationDate and (datetime.now() - machine.InstallationDate).days > 1000:
-                # Different pattern for old machines - more mechanical failures
-                weighted_reasons = {
-                    "Equipment Failure": 40,
-                    "Power Outage": 5,
-                    "Material Shortage": 10,
-                    "Operator Absence": 5,
-                    "Quality Issue": 10,
-                    "Tool Breakage": 25,  # Higher for old machines
-                    "Software Error": 5,
-                    "Safety Incident": 5,
-                    "Unexpected Maintenance": 15
-                }
-            else:
-                # More balanced for well-maintained machines
-                weighted_reasons = {
-                    "Equipment Failure": 20,
-                    "Power Outage": 10,
-                    "Material Shortage": 20,
-                    "Operator Absence": 15,
-                    "Quality Issue": 15,
-                    "Tool Breakage": 10,
-                    "Software Error": 10,
-                    "Safety Incident": 5,
-                    "Unexpected Maintenance": 10
-                }
-            
-            # Filter to only include valid reasons from the data pool
-            valid_reasons = [r for r in reasons if r in weighted_reasons]
-            valid_weights = [weighted_reasons.get(r, 10) for r in valid_reasons]
-            
-            if valid_reasons:
-                reason = random.choices(valid_reasons, weights=valid_weights, k=1)[0]
-            else:
-                reason = random.choice(reasons)
-        else:
-            # Planned maintenance more common for older machines and as next maintenance approaches
-            if machine.NextMaintenanceDate:
-                days_to_maintenance = (machine.NextMaintenanceDate - datetime.now()).days
-                if days_to_maintenance <= 7:  # Approaching scheduled maintenance
-                    weighted_reasons = {
-                        "Scheduled Maintenance": 60,
-                        "Shift Change": 5,
-                        "Setup/Changeover": 10,
-                        "Cleaning": 10,
-                        "Training": 5,
-                        "Meeting": 5,
-                        "Planned Downtime": 5,
-                        "Software Update": 5,
-                        "Certification": 5
-                    }
-                else:
-                    weighted_reasons = {
-                        "Scheduled Maintenance": 20,
-                        "Shift Change": 10,
-                        "Setup/Changeover": 30,
-                        "Cleaning": 15,
-                        "Training": 5,
-                        "Meeting": 5,
-                        "Planned Downtime": 5,
-                        "Software Update": 5,
-                        "Certification": 5
-                    }
-                    
-                # Filter to only include valid reasons from the data pool
-                valid_reasons = [r for r in reasons if r in weighted_reasons]
-                valid_weights = [weighted_reasons.get(r, 10) for r in valid_reasons]
-                
-                if valid_reasons:
-                    reason = random.choices(valid_reasons, weights=valid_weights, k=1)[0]
-                else:
-                    reason = random.choice(reasons)
-            else:
-                # Default selection when no next maintenance date
-                reason = random.choice(reasons)
-        
-        # Duration depends on reason, machine type, and age
-        if reason == "Scheduled Maintenance":
-            # Maintenance takes longer for older machines
-            if machine.InstallationDate and (datetime.now() - machine.InstallationDate).days > 1000:
-                duration = random.randint(120, 360)  # 2-6 hours for old machines
-            else:
-                duration = random.randint(60, 240)  # 1-4 hours for newer machines
-        elif reason == "Equipment Failure":
-            # More serious failures on older machines and when maintenance is overdue
-            if days_since_maintenance > 30 or (machine.InstallationDate and (datetime.now() - machine.InstallationDate).days > 1000):
-                duration = random.randint(90, 480)  # 1.5-8 hours for serious failures
-            else:
-                duration = random.randint(30, 180)  # 0.5-3 hours for normal failures
-        elif reason in ["Setup/Changeover", "Cleaning"]:
-            duration = random.randint(15, 60)  # 15-60 minutes
-        elif reason == "Safety Incident":
-            # Safety incidents can cause longer downtimes
-            duration = random.randint(60, 360)  # 1-6 hours
-        elif reason == "Power Outage":
-            # Power outages typically affect multiple machines
-            duration = random.randint(30, 240)  # 0.5-4 hours
-        else:
-            duration = random.randint(10, 120)  # 10-120 minutes for other reasons
-        
-        # Don't allow downtime to exceed the work order duration
-        if status == 'completed' and start_time and end_time:
-            max_duration = (end_time - start_time).total_seconds() / 60 * 0.8
-            duration = min(duration, int(max_duration))
-        
-        # Calculate start/end times
-        if status == 'completed' and start_time and end_time:
-            # For completed orders, place downtime within the order timeframe
-            order_duration_minutes = (end_time - start_time).total_seconds() / 60
-            
-            # Downtime can occur at different points in the production process
-            # Early: Setup issues
-            # Middle: Operational issues
-            # Late: Final adjustments or quality issues
-            downtime_position = random.choices(
-                ['early', 'middle', 'late'],
-                weights=[30, 50, 20],
-                k=1
-            )[0]
-            
-            if downtime_position == 'early':
-                start_offset = order_duration_minutes * random.uniform(0.05, 0.2)
-            elif downtime_position == 'middle':
-                start_offset = order_duration_minutes * random.uniform(0.3, 0.6)
-            else:  # late
-                start_offset = order_duration_minutes * random.uniform(0.7, 0.9)
-                
-            downtime_start = start_time + timedelta(minutes=start_offset)
-            downtime_end = downtime_start + timedelta(minutes=duration)
-            
-            # Ensure downtime ends before order end
-            if downtime_end > end_time:
-                downtime_end = end_time
-                duration = int((downtime_end - downtime_start).total_seconds() / 60)
-        else:
-            # For in-progress orders, place downtime recently
-            now = datetime.now()
-            # Most downtimes started in the last 24 hours for in-progress orders
-            hours_ago = random.choices(
-                [random.uniform(0.5, 4), random.uniform(4, 24)],
-                weights=[70, 30],
-                k=1
-            )[0]
-            downtime_start = now - timedelta(hours=hours_ago)
-            downtime_end = downtime_start + timedelta(minutes=duration)
-            
-            # If downtime would end in the future, it's still ongoing
-            if downtime_end > now:
-                downtime_end = None
-                duration = None
-        
-        # Get a reporter (technician or operator) based on the issue type
-        if category == 'planned' or reason in ["Equipment Failure", "Tool Breakage", "Unexpected Maintenance"]:
-            role = 'Technician'
-        elif reason in ["Safety Incident"]:
-            # Safety incidents might be reported by managers
-            role = random.choices(['Operator', 'Technician', 'Manager'], weights=[30, 30, 40], k=1)[0]
-        else:
-            role = random.choices(['Operator', 'Technician'], weights=[70, 30], k=1)[0]
-        
-        reporters = [
-            (name, eid) for (name, r, _), eid in employee_ids.items()
-            if r == role
-        ]
-        
-        if not reporters:
-            reporters = list(employee_ids.items())
-        
-        _, reporter_id = random.choice(reporters)
-        
-        # Generate more specific descriptions based on reason and machine characteristics
-        descriptions = {
-            "Equipment Failure": [
-                f"Machine {machine.Type} motor overheated and stopped functioning",
-                f"Control system failure on {machine.Name}",
-                f"Mechanical jam in {machine.Type} unit",
-                f"Bearing failure in main drive",
-                f"Pneumatic system pressure loss",
-                f"Drive belt snapped during operation",
-                f"Electrical short in control panel",
-                f"Coolant pump failure",
-                f"Gearbox misalignment detected",
-                f"Servo motor malfunction"
-            ],
-            "Power Outage": [
-                "Factory-wide power outage",
-                "Electrical surge damaged circuit boards",
-                "Backup generator failed to start",
-                "Power fluctuation caused system reset",
-                "Circuit breaker trip in work center",
-                "Transformer failure affected production area",
-                "Phase imbalance in electrical supply",
-                "Power grid instability causing brownouts",
-                "Lightning strike caused temporary outage",
-                "Scheduled power system maintenance by utility company"
-            ],
-            "Scheduled Maintenance": [
-                f"Routine maintenance check for {machine.Type}",
-                "Annual certification and inspection",
-                "Software update and calibration",
-                "Preventative maintenance service",
-                "Filter replacement and lubrication",
-                f"Scheduled {machine.Type} component replacement",
-                "90-day maintenance interval service",
-                "Firmware update for control systems",
-                "Safety system verification check",
-                "Critical wear component replacement"
-            ],
-            "Setup/Changeover": [
-                "Product changeover from previous batch",
-                "Tool replacement and alignment",
-                "Setup for new product specifications",
-                "Jig reconfiguration for different model",
-                "Program change for new product variant",
-                "Die change for new production run",
-                "Fixture adjustment for alternate components",
-                "Material changeover procedure",
-                "Batch start preparation",
-                "First article inspection and setup"
-            ],
-            "Material Shortage": [
-                "Awaiting delivery of critical components",
-                "Inventory depletion of necessary parts",
-                "Quality hold on incoming materials",
-                "Incorrect materials delivered",
-                "Supply chain delay impact",
-                "Missing components for scheduled production",
-                "Material quarantine pending testing",
-                "Vendor delivery delay",
-                "Expedited shipment awaiting arrival",
-                "Inventory count discrepancy resolution"
-            ],
-            "Quality Issue": [
-                "Investigating abnormal defect rate",
-                "Material specification deviation detected",
-                "Product dimensional check failure",
-                "Customer complaint investigation",
-                "Calibration drift affecting quality",
-                "Unexplained process variation investigation",
-                "Rework procedure implementation",
-                "Special testing of suspicious components",
-                "Production hold pending engineering review",
-                "Process validation after parameter adjustment"
-            ],
-            "Safety Incident": [
-                "Minor injury requiring first aid",
-                "Near-miss investigation and corrective action",
-                "Safety protocol review following incident",
-                "Emergency stop activation investigation",
-                "Safety barrier failure detected",
-                "Operational safety check following reported concern",
-                "Safety team inspection after incident report",
-                "Mandatory safety briefing after procedural violation",
-                "Equipment lockout following unsafe condition report",
-                "Regulatory safety inspection"
-            ]
-        }
-        
-        if reason in descriptions:
-            description = random.choice(descriptions[reason])
-        else:
-            description = f"{reason} on {machine.Name} in {machine.Type} operation"
-        
-        downtime_record = {
-            'MachineID': machine_id,
-            'OrderID': order_id,
-            'StartTime': downtime_start,
-            'EndTime': downtime_end,
-            'Duration': duration,
-            'Reason': reason,
-            'Category': category,
-            'Description': description,
-            'ReportedBy': reporter_id
-        }
-        
-        session.execute(self.Downtimes.insert().values(**downtime_record))
-    
+
     def insert_oee_metrics(self, session, machine_ids):
         """Insert OEE metrics with realistic patterns related to maintenance cycles."""
         logger.info("Inserting OEE metrics with maintenance correlation")
@@ -2815,7 +2278,7 @@ class MESSimulator:
         
         session.commit()
     
-    def create_downtime_record(self, session, machine_id, order_id, status, 
+    def create_downtime_record(self, session, machine_id, order_id, status,
                           start_time, end_time, employee_ids):
         """Create a more realistic downtime record with patterns related to maintenance."""
         # Get machine info to check maintenance history
@@ -2824,13 +2287,24 @@ class MESSimulator:
                 self.Machines.c.MachineID == machine_id
             )
         ).fetchone()
-        
+
         if not machine:
             return
-        
+
         # Calculate days since last maintenance
         days_since_maintenance = (datetime.now() - machine.LastMaintenanceDate).days if machine.LastMaintenanceDate else 30
-        
+
+        # Check if this machine is in the bottleneck work center
+        is_bottleneck_machine = False
+        if hasattr(self, 'bottleneck_work_center') and machine.WorkCenterID:
+            work_center = session.execute(
+                self.WorkCenters.select().where(
+                    self.WorkCenters.c.WorkCenterID == machine.WorkCenterID
+                )
+            ).fetchone()
+            if work_center and work_center.Name == self.bottleneck_work_center:
+                is_bottleneck_machine = True
+
         # Machine type-specific breakdown probability adjustment
         breakdown_factor = 1.0
         if machine.Type == "Frame Welding":
@@ -2843,7 +2317,11 @@ class MESSimulator:
             breakdown_factor = 1.05  # Complex assembly, some issues
         elif machine.Type == "Packaging":
             breakdown_factor = 0.8  # Simple operation, fewer issues
-        
+
+        # Bottleneck machines have significantly more downtime - visible in demo
+        if is_bottleneck_machine:
+            breakdown_factor *= 2.0  # Double breakdown factor for bottleneck
+
         # Base probability of unplanned downtime increases with days since maintenance
         # Reduced probabilities for more realistic breakdown rates
         # Early days (0-15): very low probability

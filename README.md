@@ -141,6 +141,7 @@ sequenceDiagram
 - Python 3.10 or higher
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) - Modern Python package manager
 - [SQLite](https://www.sqlite.org/download.html)
+- [GNU Make](https://www.gnu.org/software/make/) - Build automation tool (usually pre-installed on macOS/Linux)
 - AWS account with access to Amazon Bedrock
 (see AWS Configuration section for required permissions and models)
 
@@ -396,11 +397,6 @@ Your AWS role needs these specific permissions:
   ]
 }
 ```
-
-### Required Model Access
-
-Compatible models include Anthropic Claude 4.x models, Amazon Nova, and other models that support tool use. See [Supported models and features](https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference-supported-models-features.html) for the full list.
-
 
 ## License
 
