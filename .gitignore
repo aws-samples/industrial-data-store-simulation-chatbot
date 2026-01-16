@@ -175,3 +175,5 @@ mes.db
 app_factory/reports
 data/action_items
 reports/
+.playwright-mcp/
+CLAUDE.md
