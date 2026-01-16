@@ -1,7 +1,7 @@
 """
 Database Tools for Production Meeting Agents.
 
-This module provides Strands SDK tools for SQLite database access specifically
+This module provides Strands SDK tools for database access specifically
 designed for production meeting contexts. It includes enhanced error handling,
 production meeting context awareness, and intelligent suggestions.
 
@@ -12,12 +12,11 @@ Key Tools:
 
 Features:
 - Production meeting specific query validation
-- Enhanced error analysis for manufacturing data
+- DB-agnostic patterns via SQLAlchemy
 - Meeting context awareness and timeframe management
 - Performance monitoring optimized for meeting efficiency
 """
 
-import sqlite3
 import pandas as pd
 import logging
 from typing import Dict, Any, List, Optional
@@ -26,6 +25,13 @@ from functools import lru_cache
 from strands import tool
 from ..error_handling import IntelligentErrorAnalyzer, ErrorContext
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.db_utils import (
+    days_ago, days_ahead, today,
+    date_range_start, date_range_end
+)
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 # Performance optimization: Cache frequently accessed data
 _schema_cache = None
@@ -52,18 +58,18 @@ def run_sqlite_query(query: str) -> Dict[str, Any]:
     
     # Log query for performance monitoring
     logger.info(f"Executing production meeting query: {query[:100]}{'...' if len(query) > 100 else ''}")
-    
-    # Performance optimization: Limit result size for meeting efficiency
-    MAX_ROWS_FOR_MEETINGS = 1000
-    if 'LIMIT' not in query.upper():
-        query = f"{query.rstrip(';')} LIMIT {MAX_ROWS_FOR_MEETINGS}"
-        logger.debug(f"Added LIMIT clause for meeting efficiency: {MAX_ROWS_FOR_MEETINGS} rows")
-    
+
     try:
-        # Validate query with production meeting context
+        # Validate query BEFORE adding LIMIT clause
         validation_result = _validate_production_query(query)
         if not validation_result['valid']:
             return _create_production_validation_error_response(query, validation_result)
+
+        # Performance optimization: Limit result size for meeting efficiency
+        MAX_ROWS_FOR_MEETINGS = 1000
+        if 'LIMIT' not in query.upper():
+            query = f"{query.rstrip(';')} LIMIT {MAX_ROWS_FOR_MEETINGS}"
+            logger.debug(f"Added LIMIT clause for meeting efficiency: {MAX_ROWS_FOR_MEETINGS} rows")
         
         # Use the shared database manager for consistency
         db_manager = DatabaseManager()
@@ -462,21 +468,26 @@ def _get_table_meeting_tips(table_name: str) -> List[str]:
 
 def _get_common_production_queries(table_name: str) -> List[str]:
     """Get common production queries for a specific table."""
+    # Use actual dates for example queries (DB-agnostic)
+    yesterday = days_ago(1)
+    seven_days_ago = days_ago(7)
+    seven_days_ahead_date = days_ahead(7)
+
     queries_map = {
         'WorkOrders': [
-            "SELECT * FROM WorkOrders WHERE ActualStartTime >= date('now', '-1 day')",
+            f"SELECT * FROM WorkOrders WHERE ActualStartTime >= '{yesterday}'",
             "SELECT ProductID, SUM(ActualProduction) as Total FROM WorkOrders GROUP BY ProductID",
             "SELECT * FROM WorkOrders WHERE Status = 'in_progress'"
         ],
         'QualityControl': [
-            "SELECT * FROM QualityControl WHERE Date >= date('now', '-1 day')",
-            "SELECT AVG(DefectRate) as AvgDefectRate FROM QualityControl WHERE Date >= date('now', '-7 days')",
+            f"SELECT * FROM QualityControl WHERE Date >= '{yesterday}'",
+            f"SELECT AVG(DefectRate) as AvgDefectRate FROM QualityControl WHERE Date >= '{seven_days_ago}'",
             "SELECT * FROM QualityControl WHERE Result = 'fail'"
         ],
         'Machines': [
             "SELECT * FROM Machines WHERE Status != 'running'",
             "SELECT MachineID, EfficiencyFactor FROM Machines ORDER BY EfficiencyFactor DESC",
-            "SELECT * FROM Machines WHERE NextMaintenanceDate <= date('now', '+7 days')"
+            f"SELECT * FROM Machines WHERE NextMaintenanceDate <= '{seven_days_ahead_date}'"
         ],
         'Inventory': [
             "SELECT * FROM Inventory WHERE Quantity < ReorderLevel",
@@ -484,7 +495,7 @@ def _get_common_production_queries(table_name: str) -> List[str]:
             "SELECT ItemName, Quantity, ReorderLevel FROM Inventory ORDER BY Quantity ASC"
         ]
     }
-    
+
     return queries_map.get(table_name, [
         f"SELECT * FROM {table_name} LIMIT 10",
         f"SELECT COUNT(*) FROM {table_name}",
@@ -548,24 +559,26 @@ def _get_production_summary_for_context(db_manager: DatabaseManager, time_ranges
     """Get production summary for meeting context."""
     try:
         primary_range = time_ranges['primary']
-        
-        query = f"""
-        SELECT 
+        start_time = date_range_start(primary_range['start'])
+        end_time = date_range_end(primary_range['end'])
+
+        query = """
+        SELECT
             COUNT(wo.OrderID) as total_orders,
             SUM(wo.Quantity) as planned_quantity,
             SUM(wo.ActualProduction) as actual_production,
             SUM(wo.Scrap) as total_scrap,
             ROUND(AVG(CASE WHEN wo.Quantity > 0 THEN wo.ActualProduction * 100.0 / wo.Quantity ELSE 0 END), 2) as avg_completion_rate
         FROM WorkOrders wo
-        WHERE wo.ActualStartTime BETWEEN '{primary_range['start']} 00:00:00' AND '{primary_range['end']} 23:59:59'
+        WHERE wo.ActualStartTime >= :start_time AND wo.ActualStartTime <= :end_time
         """
-        
-        result = db_manager.execute_query(query)
+
+        result = db_manager.execute_query(query, {"start_time": start_time, "end_time": end_time})
         if result['success'] and result['rows']:
             return result['rows'][0]
         else:
             return {'total_orders': 0, 'planned_quantity': 0, 'actual_production': 0, 'total_scrap': 0, 'avg_completion_rate': 0}
-    
+
     except Exception:
         return {'error': 'Unable to retrieve production summary'}
 
@@ -574,24 +587,26 @@ def _get_quality_summary_for_context(db_manager: DatabaseManager, time_ranges: D
     """Get quality summary for meeting context."""
     try:
         primary_range = time_ranges['primary']
-        
-        query = f"""
-        SELECT 
+        start_time = date_range_start(primary_range['start'])
+        end_time = date_range_end(primary_range['end'])
+
+        query = """
+        SELECT
             COUNT(qc.CheckID) as total_checks,
             ROUND(AVG(qc.DefectRate) * 100, 2) as avg_defect_rate,
             ROUND(AVG(qc.YieldRate) * 100, 2) as avg_yield_rate,
             SUM(CASE WHEN qc.Result = 'pass' THEN 1 ELSE 0 END) as pass_count,
             SUM(CASE WHEN qc.Result = 'fail' THEN 1 ELSE 0 END) as fail_count
         FROM QualityControl qc
-        WHERE qc.Date BETWEEN '{primary_range['start']} 00:00:00' AND '{primary_range['end']} 23:59:59'
+        WHERE qc.Date >= :start_time AND qc.Date <= :end_time
         """
-        
-        result = db_manager.execute_query(query)
+
+        result = db_manager.execute_query(query, {"start_time": start_time, "end_time": end_time})
         if result['success'] and result['rows']:
             return result['rows'][0]
         else:
             return {'total_checks': 0, 'avg_defect_rate': 0, 'avg_yield_rate': 0, 'pass_count': 0, 'fail_count': 0}
-    
+
     except Exception:
         return {'error': 'Unable to retrieve quality summary'}
 
@@ -932,9 +947,13 @@ def _get_meeting_table_priorities() -> Dict[str, str]:
 
 def _get_quick_start_queries() -> Dict[str, str]:
     """Get quick start queries for common meeting needs."""
+    # Use actual dates for example queries (DB-agnostic)
+    yesterday = days_ago(1)
+    seven_days_ago = days_ago(7)
+
     return {
-        'daily_production': "SELECT * FROM WorkOrders WHERE ActualStartTime >= date('now', '-1 day') LIMIT 20",
-        'quality_issues': "SELECT * FROM QualityControl WHERE Result = 'fail' AND Date >= date('now', '-7 days') LIMIT 10",
+        'daily_production': f"SELECT * FROM WorkOrders WHERE ActualStartTime >= '{yesterday}' LIMIT 20",
+        'quality_issues': f"SELECT * FROM QualityControl WHERE Result = 'fail' AND Date >= '{seven_days_ago}' LIMIT 10",
         'equipment_status': "SELECT Name, Type, Status, EfficiencyFactor FROM Machines WHERE Status != 'running' LIMIT 15",
         'inventory_alerts': "SELECT Name, Quantity, ReorderLevel FROM Inventory WHERE Quantity < ReorderLevel LIMIT 10"
     }
@@ -969,18 +988,21 @@ def _get_meeting_focus_areas(meeting_type: str) -> List[str]:
 def _get_context_recommended_queries(meeting_type: str, time_ranges: Dict[str, Any]) -> List[str]:
     """Get recommended queries based on meeting type and time ranges."""
     primary_range = time_ranges['primary']
-    
+    start_time = date_range_start(primary_range['start'])
+    end_time = date_range_end(primary_range['end'])
+
     queries = []
-    
+
     if meeting_type == 'daily':
+        # These are display queries - using actual values for easy copy/paste
         queries.extend([
-            f"SELECT * FROM WorkOrders WHERE ActualStartTime BETWEEN '{primary_range['start']} 00:00:00' AND '{primary_range['end']} 23:59:59' LIMIT 20",
-            f"SELECT * FROM QualityControl WHERE Date BETWEEN '{primary_range['start']} 00:00:00' AND '{primary_range['end']} 23:59:59' AND Result = 'fail' LIMIT 10"
+            f"SELECT * FROM WorkOrders WHERE ActualStartTime >= '{start_time}' AND ActualStartTime <= '{end_time}' LIMIT 20",
+            f"SELECT * FROM QualityControl WHERE Date >= '{start_time}' AND Date <= '{end_time}' AND Result = 'fail' LIMIT 10"
         ])
-    
+
     queries.append("SELECT Name, Status, EfficiencyFactor FROM Machines WHERE Status != 'running'")
     queries.append("SELECT Name, Quantity, ReorderLevel FROM Inventory WHERE Quantity < ReorderLevel")
-    
+
     return queries
 
 

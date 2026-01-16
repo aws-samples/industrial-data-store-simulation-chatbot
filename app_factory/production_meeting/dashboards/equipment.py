@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.db_utils import days_ago, today, date_diff_days
 
 # Initialize database manager
 db_manager = DatabaseManager()
@@ -207,6 +208,8 @@ def equipment_status_dashboard():
     st.subheader("🔍 Downtime Impact Analysis")
     
     # Get downtime data with production impact
+    seven_days_ago = days_ago(7)
+
     downtime_query = """
     SELECT
         m.Name as MachineName,
@@ -221,13 +224,13 @@ def equipment_status_dashboard():
     JOIN
         Machines m ON d.MachineID = m.MachineID
     WHERE
-        d.StartTime >= date('now', '-7 day')
+        d.StartTime >= :seven_days_ago
     ORDER BY
         EstimatedLostUnits DESC
     LIMIT 10
     """
-    
-    result = db_manager.execute_query(downtime_query)
+
+    result = db_manager.execute_query(downtime_query, {"seven_days_ago": seven_days_ago})
     
     if result["success"] and result["row_count"] > 0:
         downtime_df = pd.DataFrame(result["rows"])
@@ -328,34 +331,40 @@ def equipment_status_dashboard():
         
     # NEW: Maintenance Effectiveness Analysis
     st.subheader("🛠️ Maintenance Effectiveness")
-    
+
     # Get data on machine breakdowns after maintenance
+    # Calculate DaysSinceMaintenance in Python instead of using julianday
+    today_str = today()
+
     maintenance_query = """
-    SELECT 
+    SELECT
         m.Name as MachineName,
         m.Type as MachineType,
         MAX(m.LastMaintenanceDate) as LastMaintenance,
-        julianday('now') - julianday(MAX(m.LastMaintenanceDate)) as DaysSinceMaintenance,
         COUNT(d.DowntimeID) as BreakdownsAfterMaintenance
-    FROM 
+    FROM
         Machines m
-    LEFT JOIN 
-        Downtimes d ON m.MachineID = d.MachineID AND 
+    LEFT JOIN
+        Downtimes d ON m.MachineID = d.MachineID AND
                         d.StartTime > m.LastMaintenanceDate AND
                         d.Category = 'unplanned'
-    GROUP BY 
+    GROUP BY
         m.MachineID, m.Name, m.Type
-    HAVING 
+    HAVING
         LastMaintenance IS NOT NULL
-    ORDER BY 
+    ORDER BY
         BreakdownsAfterMaintenance DESC
     LIMIT 10
     """
-    
+
     result = db_manager.execute_query(maintenance_query)
-    
+
     if result["success"] and result["row_count"] > 0:
         maintenance_df = pd.DataFrame(result["rows"])
+        # Calculate DaysSinceMaintenance in Python (replaces julianday)
+        maintenance_df['DaysSinceMaintenance'] = maintenance_df['LastMaintenance'].apply(
+            lambda x: date_diff_days(today_str, x[:10]) if x else 0
+        )
         
         # Create visualization of maintenance effectiveness
         fig = px.scatter(

@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.express as px
 
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.db_utils import days_ago
 
 # Initialize database manager
 db_manager = DatabaseManager()
@@ -14,26 +15,29 @@ db_manager = DatabaseManager()
 def add_root_cause_analysis():
     """Add root cause analysis based on actual defect data from the database"""
     st.header("🔍 Root Cause Analysis")
-    
+
+    # Calculate date for parameterized query
+    thirty_days_ago = days_ago(30)
+
     # Get defect types from database for selection
     defect_query = """
-    SELECT 
+    SELECT
         d.DefectType,
         COUNT(d.DefectID) as DefectCount
-    FROM 
+    FROM
         Defects d
-    JOIN 
+    JOIN
         QualityControl qc ON d.CheckID = qc.CheckID
-    WHERE 
-        qc.Date >= date('now', '-30 day')
-    GROUP BY 
+    WHERE
+        qc.Date >= :thirty_days_ago
+    GROUP BY
         d.DefectType
-    ORDER BY 
+    ORDER BY
         DefectCount DESC
     LIMIT 15
     """
-    
-    result = db_manager.execute_query(defect_query)
+
+    result = db_manager.execute_query(defect_query, {"thirty_days_ago": thirty_days_ago})
     
     if result["success"] and result["row_count"] > 0:
         defect_df = pd.DataFrame(result["rows"])
@@ -48,8 +52,9 @@ def add_root_cause_analysis():
         if st.button("Run Root Cause Analysis"):
             with st.spinner("Analyzing patterns..."):
                 # Get detailed data on the selected defect type
-                detail_query = f"""
-                SELECT 
+                # Use parameterized query to prevent SQL injection
+                detail_query = """
+                SELECT
                     d.DefectType,
                     d.Severity,
                     d.Location,
@@ -62,26 +67,29 @@ def add_root_cause_analysis():
                     m.Type as MachineType,
                     e.Name as EmployeeName,
                     e.Role as EmployeeRole
-                FROM 
+                FROM
                     Defects d
-                JOIN 
+                JOIN
                     QualityControl qc ON d.CheckID = qc.CheckID
-                JOIN 
+                JOIN
                     WorkOrders wo ON qc.OrderID = wo.OrderID
-                JOIN 
+                JOIN
                     Products p ON wo.ProductID = p.ProductID
-                JOIN 
+                JOIN
                     WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
-                JOIN 
+                JOIN
                     Machines m ON wo.MachineID = m.MachineID
-                JOIN 
+                JOIN
                     Employees e ON wo.EmployeeID = e.EmployeeID
-                WHERE 
-                    d.DefectType = '{selected_defect}'
-                    AND qc.Date >= date('now', '-30 day')
+                WHERE
+                    d.DefectType = :defect_type
+                    AND qc.Date >= :thirty_days_ago
                 """
-                
-                detail_result = db_manager.execute_query(detail_query)
+
+                detail_result = db_manager.execute_query(
+                    detail_query,
+                    {"defect_type": selected_defect, "thirty_days_ago": thirty_days_ago}
+                )
                 
                 if detail_result["success"] and detail_result["row_count"] > 0:
                     detail_df = pd.DataFrame(detail_result["rows"])
@@ -188,27 +196,39 @@ def add_root_cause_analysis():
                             st.write(f"- **{row['Action']}** (Used in {effectiveness:.1f}% of cases)")
                     
                     # Check for machine maintenance correlation
-                    maintenance_query = f"""
-                    SELECT 
-                        julianday(m.LastMaintenanceDate) - julianday(qc.Date) as DaysSinceMaintenance
-                    FROM 
+                    # Use parameterized query to prevent SQL injection
+                    # Calculate days since maintenance in Python instead of julianday()
+                    from app_factory.shared.db_utils import date_diff_days
+                    maintenance_query = """
+                    SELECT
+                        m.LastMaintenanceDate,
+                        qc.Date as CheckDate
+                    FROM
                         Defects d
-                    JOIN 
+                    JOIN
                         QualityControl qc ON d.CheckID = qc.CheckID
-                    JOIN 
+                    JOIN
                         WorkOrders wo ON qc.OrderID = wo.OrderID
-                    JOIN 
+                    JOIN
                         Machines m ON wo.MachineID = m.MachineID
-                    WHERE 
-                        d.DefectType = '{selected_defect}'
-                        AND qc.Date >= date('now', '-30 day')
+                    WHERE
+                        d.DefectType = :defect_type
+                        AND qc.Date >= :thirty_days_ago
                     """
-                    
-                    maintenance_result = db_manager.execute_query(maintenance_query)
-                    
+
+                    maintenance_result = db_manager.execute_query(
+                        maintenance_query,
+                        {"defect_type": selected_defect, "thirty_days_ago": thirty_days_ago}
+                    )
+
                     if maintenance_result["success"] and maintenance_result["row_count"] > 0:
                         maintenance_df = pd.DataFrame(maintenance_result["rows"])
-                        
+                        # Calculate days since maintenance in Python
+                        maintenance_df['DaysSinceMaintenance'] = maintenance_df.apply(
+                            lambda row: date_diff_days(row['CheckDate'][:10], row['LastMaintenanceDate'][:10])
+                            if row['LastMaintenanceDate'] and row['CheckDate'] else 0,
+                            axis=1
+                        )
                         avg_days = maintenance_df['DaysSinceMaintenance'].mean()
                         
                         if avg_days > 14:  # If average is more than 2 weeks

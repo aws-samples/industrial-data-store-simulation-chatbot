@@ -11,6 +11,7 @@ import os
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.db_utils import days_ago
 
 # Import production meeting modules
 from .dashboards import (
@@ -37,6 +38,10 @@ def get_top_issues():
     """Query database for top issues to display in the AI summary card"""
     issues = []
 
+    # Calculate dates for parameterized queries
+    fourteen_days_ago = days_ago(14)
+    seven_days_ago = days_ago(7)
+
     # Quality issues from last 14 days
     quality_query = """
         SELECT
@@ -45,7 +50,7 @@ def get_top_issues():
             d.DefectType
         FROM Defects d
         JOIN QualityControl qc ON d.CheckID = qc.CheckID
-        WHERE qc.Date >= date('now', '-14 day')
+        WHERE qc.Date >= :fourteen_days_ago
         GROUP BY d.DefectType
         ORDER BY defect_count DESC
         LIMIT 3
@@ -67,7 +72,7 @@ def get_top_issues():
                SUM(d.Duration) as total_downtime_mins
         FROM Machines m
         JOIN Downtimes d ON m.MachineID = d.MachineID
-        WHERE d.StartTime >= date('now', '-7 day')
+        WHERE d.StartTime >= :seven_days_ago
         GROUP BY m.MachineID
         ORDER BY total_downtime_mins DESC
         LIMIT 3
@@ -75,7 +80,7 @@ def get_top_issues():
 
     try:
         # Get quality issues
-        quality_result = db_manager.execute_query(quality_query)
+        quality_result = db_manager.execute_query(quality_query, {"fourteen_days_ago": fourteen_days_ago})
         if quality_result.get('success') and quality_result.get('rows'):
             top_defect = quality_result['rows'][0]
             issues.append({
@@ -97,7 +102,7 @@ def get_top_issues():
                 })
 
         # Get equipment issues
-        equipment_result = db_manager.execute_query(equipment_query)
+        equipment_result = db_manager.execute_query(equipment_query, {"seven_days_ago": seven_days_ago})
         if equipment_result.get('success') and equipment_result.get('rows'):
             top_equipment = equipment_result['rows'][0]
             if top_equipment['total_downtime_mins'] and top_equipment['total_downtime_mins'] > 60:

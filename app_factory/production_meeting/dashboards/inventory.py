@@ -10,6 +10,7 @@ import numpy as np
 from datetime import datetime, timedelta
 
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.db_utils import days_ago
 
 # Initialize database manager
 db_manager = DatabaseManager()
@@ -176,29 +177,31 @@ def inventory_dashboard():
         st.subheader("Days of Supply Analysis")
         
         # Get consumption data to calculate days of supply
+        thirty_days_ago = days_ago(30)
+
         consumption_query = """
-        SELECT 
+        SELECT
             i.ItemID,
             i.Name as ItemName,
             i.Category as ItemCategory,
             i.Quantity as CurrentQuantity,
             i.ReorderLevel,
             AVG(mc.ActualQuantity) as AvgDailyConsumption
-        FROM 
+        FROM
             Inventory i
-        LEFT JOIN 
+        LEFT JOIN
             MaterialConsumption mc ON i.ItemID = mc.ItemID
-        WHERE 
+        WHERE
             i.Quantity < i.ReorderLevel
-            AND mc.ConsumptionDate >= date('now', '-30 day')
-        GROUP BY 
+            AND mc.ConsumptionDate >= :thirty_days_ago
+        GROUP BY
             i.ItemID, i.Name, i.Category, i.Quantity, i.ReorderLevel
-        ORDER BY 
+        ORDER BY
             (i.Quantity / CASE WHEN AVG(mc.ActualQuantity) > 0 THEN AVG(mc.ActualQuantity) ELSE 999999 END) ASC
         LIMIT 10
         """
-        
-        result = db_manager.execute_query(consumption_query)
+
+        result = db_manager.execute_query(consumption_query, {"thirty_days_ago": thirty_days_ago})
         
         if result["success"] and result["row_count"] > 0:
             consumption_df = pd.DataFrame(result["rows"])

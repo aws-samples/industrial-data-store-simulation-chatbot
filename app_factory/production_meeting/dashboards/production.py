@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import numpy as np
 
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.db_utils import days_ago, days_ahead, today, date_range_start, date_range_end
 
 # Initialize database manager
 db_manager = DatabaseManager()
@@ -261,26 +262,28 @@ def display_daily_overview():
         st.subheader("Production Trend (Last 7 Days)")
         
         # Get production data for the last 7 days
+        seven_days_ago = days_ago(7)
+
         production_trend_query = """
-        SELECT 
+        SELECT
             date(wo.ActualEndTime) as ProductionDate,
             COUNT(wo.OrderID) as CompletedOrders,
             SUM(wo.Quantity) as PlannedQuantity,
             SUM(wo.ActualProduction) as ActualProduction,
             SUM(wo.Scrap) as ScrapQuantity,
             ROUND(SUM(wo.ActualProduction) * 100.0 / SUM(wo.Quantity), 2) as CompletionPercentage
-        FROM 
+        FROM
             WorkOrders wo
-        WHERE 
+        WHERE
             wo.Status = 'completed'
-            AND wo.ActualEndTime >= date('now', '-7 day')
-        GROUP BY 
+            AND wo.ActualEndTime >= :seven_days_ago
+        GROUP BY
             date(wo.ActualEndTime)
-        ORDER BY 
+        ORDER BY
             ProductionDate
         """
-        
-        result = db_manager.execute_query(production_trend_query)
+
+        result = db_manager.execute_query(production_trend_query, {"seven_days_ago": seven_days_ago})
         
         if result["success"] and result["row_count"] > 0:
             trend_df = pd.DataFrame(result["rows"])
@@ -480,22 +483,26 @@ def display_performance_metrics():
     
     with col1:
         st.subheader("OEE Overview (Last 24 Hours)")
-        
-        # Get yesterday's OEE metrics
+
+        # Get yesterday's OEE metrics using parameterized query
+        yesterday_date = days_ago(1)
+        yesterday_start = date_range_start(yesterday_date)
+        yesterday_end = date_range_end(yesterday_date)
+
         oee_query = """
-        SELECT 
+        SELECT
             ROUND(AVG(oee.OEE) * 100, 2) as AvgOEE,
             ROUND(AVG(oee.Availability) * 100, 2) as AvgAvailability,
             ROUND(AVG(oee.Performance) * 100, 2) as AvgPerformance,
             ROUND(AVG(oee.Quality) * 100, 2) as AvgQuality,
             SUM(oee.Downtime) as TotalDowntimeMinutes
-        FROM 
+        FROM
             OEEMetrics oee
-        WHERE 
-            date(oee.Date) = date('now', '-1 day')
+        WHERE
+            oee.Date >= :yesterday_start AND oee.Date <= :yesterday_end
         """
-        
-        result = db_manager.execute_query(oee_query)
+
+        result = db_manager.execute_query(oee_query, {"yesterday_start": yesterday_start, "yesterday_end": yesterday_end})
         
         if result["success"] and result["row_count"] > 0:
             oee_data = result["rows"][0]
@@ -542,26 +549,28 @@ def display_performance_metrics():
     
     with col2:
         st.subheader("OEE Trend (Last 7 Days)")
-        
-        # Get OEE trend data
+
+        # Get OEE trend data using parameterized query
+        seven_days_ago_oee = days_ago(7)
+
         oee_trend_query = """
-        SELECT 
+        SELECT
             date(oee.Date) as MeasurementDate,
             ROUND(AVG(oee.OEE) * 100, 2) as AvgOEE,
             ROUND(AVG(oee.Availability) * 100, 2) as AvgAvailability,
             ROUND(AVG(oee.Performance) * 100, 2) as AvgPerformance,
             ROUND(AVG(oee.Quality) * 100, 2) as AvgQuality
-        FROM 
+        FROM
             OEEMetrics oee
-        WHERE 
-            oee.Date >= date('now', '-7 day')
-        GROUP BY 
+        WHERE
+            oee.Date >= :seven_days_ago
+        GROUP BY
             date(oee.Date)
-        ORDER BY 
+        ORDER BY
             MeasurementDate
         """
-        
-        result = db_manager.execute_query(oee_trend_query)
+
+        result = db_manager.execute_query(oee_trend_query, {"seven_days_ago": seven_days_ago_oee})
         
         if result["success"] and result["row_count"] > 0:
             oee_trend_df = pd.DataFrame(result["rows"])
@@ -605,28 +614,28 @@ def display_performance_metrics():
     
     # Get OEE by Machine Type
     st.subheader("OEE by Machine Type (Yesterday)")
-    
+
     oee_by_machine_query = """
-    SELECT 
+    SELECT
         m.Type as MachineType,
         ROUND(AVG(oee.OEE) * 100, 2) as AvgOEE,
         ROUND(AVG(oee.Availability) * 100, 2) as AvgAvailability,
         ROUND(AVG(oee.Performance) * 100, 2) as AvgPerformance,
         ROUND(AVG(oee.Quality) * 100, 2) as AvgQuality,
         SUM(oee.Downtime) as TotalDowntime
-    FROM 
+    FROM
         OEEMetrics oee
     JOIN
         Machines m ON oee.MachineID = m.MachineID
-    WHERE 
-        date(oee.Date) = date('now', '-1 day')
-    GROUP BY 
+    WHERE
+        oee.Date >= :yesterday_start AND oee.Date <= :yesterday_end
+    GROUP BY
         m.Type
-    ORDER BY 
+    ORDER BY
         AvgOEE DESC
     """
-    
-    result = db_manager.execute_query(oee_by_machine_query)
+
+    result = db_manager.execute_query(oee_by_machine_query, {"yesterday_start": yesterday_start, "yesterday_end": yesterday_end})
     
     if result["success"] and result["row_count"] > 0:
         machine_oee_df = pd.DataFrame(result["rows"])
@@ -669,32 +678,32 @@ def display_performance_metrics():
 
     # Shift Performance Section
     st.subheader("Shift Performance Comparison (Yesterday)")
-    
-    # Get shift performance data
+
+    # Get shift performance data using parameterized query
     shift_performance_query = """
-    SELECT 
+    SELECT
         s.Name as ShiftName,
         COUNT(wo.OrderID) as CompletedOrders,
         SUM(wo.Quantity) as PlannedQuantity,
         SUM(wo.ActualProduction) as ActualProduction,
         SUM(wo.Scrap) as ScrapQuantity,
         ROUND(SUM(wo.ActualProduction) * 100.0 / SUM(wo.Quantity), 2) as CompletionPercentage
-    FROM 
+    FROM
         WorkOrders wo
     JOIN
         Employees e ON wo.EmployeeID = e.EmployeeID
     JOIN
         Shifts s ON e.ShiftID = s.ShiftID
-    WHERE 
-        date(wo.ActualEndTime) = date('now', '-1 day')
+    WHERE
+        wo.ActualEndTime >= :yesterday_start AND wo.ActualEndTime <= :yesterday_end
         AND wo.Status = 'completed'
-    GROUP BY 
+    GROUP BY
         s.Name
-    ORDER BY 
+    ORDER BY
         CompletedOrders DESC
     """
-    
-    result = db_manager.execute_query(shift_performance_query)
+
+    result = db_manager.execute_query(shift_performance_query, {"yesterday_start": yesterday_start, "yesterday_end": yesterday_end})
     
     if result["success"] and result["row_count"] > 0:
         shift_df = pd.DataFrame(result["rows"])
@@ -871,28 +880,30 @@ def display_bottlenecks_and_issues():
     
     with col2:
         st.subheader("🚧 Recent Downtime Events (24h)")
-        
+
         # Get top downtime events from today and yesterday
+        one_day_ago = days_ago(1)
+
         downtime_query = """
-        SELECT 
+        SELECT
             m.Name as MachineName,
             m.Type as MachineType,
             d.Reason as DowntimeReason,
             d.Category as DowntimeCategory,
             d.Duration as DurationMinutes,
             d.Description
-        FROM 
+        FROM
             Downtimes d
-        JOIN 
+        JOIN
             Machines m ON d.MachineID = m.MachineID
-        WHERE 
-            d.StartTime >= date('now', '-1 day')
-        ORDER BY 
+        WHERE
+            d.StartTime >= :one_day_ago
+        ORDER BY
             d.Duration DESC
         LIMIT 5
         """
-        
-        result = db_manager.execute_query(downtime_query)
+
+        result = db_manager.execute_query(downtime_query, {"one_day_ago": one_day_ago})
         
         if result["success"] and result["row_count"] > 0:
             downtime_df = pd.DataFrame(result["rows"])
@@ -938,25 +949,27 @@ def display_bottlenecks_and_issues():
     
     # Get top downtime reasons by category
     st.subheader("Downtime Pareto (Last 7 Days)")
-    
+
+    seven_days_ago_pareto = days_ago(7)
+
     downtime_pareto_query = """
-    SELECT 
+    SELECT
         d.Reason as DowntimeReason,
         d.Category as DowntimeCategory,
         COUNT(d.DowntimeID) as OccurrenceCount,
         SUM(d.Duration) as TotalMinutes
-    FROM 
+    FROM
         Downtimes d
-    WHERE 
-        d.StartTime >= date('now', '-7 day')
-    GROUP BY 
+    WHERE
+        d.StartTime >= :seven_days_ago
+    GROUP BY
         d.Reason, d.Category
-    ORDER BY 
+    ORDER BY
         TotalMinutes DESC
     LIMIT 10
     """
-    
-    result = db_manager.execute_query(downtime_pareto_query)
+
+    result = db_manager.execute_query(downtime_pareto_query, {"seven_days_ago": seven_days_ago_pareto})
     
     if result["success"] and result["row_count"] > 0:
         pareto_df = pd.DataFrame(result["rows"])
@@ -1060,32 +1073,36 @@ def display_production_schedule():
     
     with col1:
         st.subheader("Today's Production Plan")
-        
-        # Get today's scheduled production
+
+        # Get today's scheduled production using parameterized query
+        today_date = today()
+        today_start = date_range_start(today_date)
+        today_end = date_range_end(today_date)
+
         todays_plan_query = """
-        SELECT 
+        SELECT
             p.Name as ProductName,
             p.Category as ProductCategory,
             COUNT(wo.OrderID) as OrderCount,
             SUM(wo.Quantity) as PlannedQuantity,
             wc.Name as WorkCenterName
-        FROM 
+        FROM
             WorkOrders wo
-        JOIN 
+        JOIN
             Products p ON wo.ProductID = p.ProductID
-        JOIN 
+        JOIN
             WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
-        WHERE 
-            date(wo.PlannedStartTime) <= date('now')
-            AND date(wo.PlannedEndTime) >= date('now')
+        WHERE
+            wo.PlannedStartTime <= :today_end
+            AND wo.PlannedEndTime >= :today_start
             AND wo.Status IN ('scheduled', 'in_progress')
-        GROUP BY 
+        GROUP BY
             p.Name, p.Category, wc.Name
-        ORDER BY 
+        ORDER BY
             OrderCount DESC
         """
-        
-        result = db_manager.execute_query(todays_plan_query)
+
+        result = db_manager.execute_query(todays_plan_query, {"today_start": today_start, "today_end": today_end})
         
         if result["success"] and result["row_count"] > 0:
             today_df = pd.DataFrame(result["rows"])
@@ -1122,29 +1139,31 @@ def display_production_schedule():
     
     with col2:
         st.subheader("Weekly Production Forecast")
-        
-        # Get weekly planned production (next 7 days)
+
+        # Get weekly planned production (next 7 days) using parameterized query
+        seven_days_ahead = days_ahead(7)
+
         weekly_forecast_query = """
-        SELECT 
+        SELECT
             date(wo.PlannedStartTime) as ProductionDate,
             p.Category as ProductCategory,
             COUNT(wo.OrderID) as OrderCount,
             SUM(wo.Quantity) as PlannedQuantity
-        FROM 
+        FROM
             WorkOrders wo
-        JOIN 
+        JOIN
             Products p ON wo.ProductID = p.ProductID
-        WHERE 
-            wo.PlannedStartTime >= date('now')
-            AND wo.PlannedStartTime <= date('now', '+7 day')
+        WHERE
+            wo.PlannedStartTime >= :today_date
+            AND wo.PlannedStartTime <= :seven_days_ahead
             AND wo.Status = 'scheduled'
-        GROUP BY 
+        GROUP BY
             date(wo.PlannedStartTime), p.Category
-        ORDER BY 
+        ORDER BY
             ProductionDate
         """
-        
-        result = db_manager.execute_query(weekly_forecast_query)
+
+        result = db_manager.execute_query(weekly_forecast_query, {"today_date": today_date, "seven_days_ahead": seven_days_ahead})
         
         if result["success"] and result["row_count"] > 0:
             forecast_df = pd.DataFrame(result["rows"])
@@ -1180,10 +1199,10 @@ def display_production_schedule():
     
     # Material requirements section
     st.subheader("Critical Material Requirements")
-    
+
     # Get materials required for upcoming production with potential shortages
     material_requirements_query = """
-    SELECT 
+    SELECT
         i.Name as ItemName,
         i.Category as ItemCategory,
         i.Quantity as CurrentInventory,
@@ -1192,27 +1211,27 @@ def display_production_schedule():
         s.Name as SupplierName,
         SUM(bom.Quantity * wo.Quantity) as RequiredQuantity,
         i.Quantity - SUM(bom.Quantity * wo.Quantity) as ProjectedBalance
-    FROM 
+    FROM
         WorkOrders wo
-    JOIN 
+    JOIN
         BillOfMaterials bom ON wo.ProductID = bom.ProductID
-    JOIN 
+    JOIN
         Inventory i ON bom.ComponentID = i.ItemID
-    JOIN 
+    JOIN
         Suppliers s ON i.SupplierID = s.SupplierID
-    WHERE 
+    WHERE
         wo.Status = 'scheduled'
-        AND wo.PlannedStartTime <= date('now', '+7 day')
-    GROUP BY 
+        AND wo.PlannedStartTime <= :seven_days_ahead
+    GROUP BY
         i.ItemID, i.Name, i.Category, i.Quantity, i.ReorderLevel, i.LeadTime, s.Name
-    HAVING 
+    HAVING
         ProjectedBalance < i.ReorderLevel OR ProjectedBalance < 0
-    ORDER BY 
+    ORDER BY
         ProjectedBalance ASC
     LIMIT 10
     """
-    
-    result = db_manager.execute_query(material_requirements_query)
+
+    result = db_manager.execute_query(material_requirements_query, {"seven_days_ahead": seven_days_ahead})
     
     if result["success"] and result["row_count"] > 0:
         materials_df = pd.DataFrame(result["rows"])

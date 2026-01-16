@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.db_utils import days_ago, today
 from ..ai_insights import generate_ai_insight
 
 # Initialize database manager
@@ -101,7 +102,12 @@ def quality_dashboard():
         else:  # Last 30 Days
             days_back = 30
             compare_days = 60  # Compare with previous 30 days
-    
+
+    # Calculate dates for parameterized queries
+    yesterday_date = days_ago(1)
+    two_days_ago_date = days_ago(2)
+    thirty_days_ago_date = days_ago(30)
+
     # Get yesterday's quality data
     yesterday_quality = db_manager.get_quality_summary(days_back=1, range_days=1)
     
@@ -162,10 +168,14 @@ def quality_dashboard():
         
         with tab1:
             st.subheader("Yesterday's Top Quality Issues")
-            
-            # Get yesterday's defects
+
+            # Get yesterday's defects using parameterized query
+            from app_factory.shared.db_utils import date_range_start, date_range_end
+            yesterday_start = date_range_start(yesterday_date)
+            yesterday_end = date_range_end(yesterday_date)
+
             defects_query = """
-            SELECT 
+            SELECT
                 d.DefectType,
                 d.Severity,
                 COUNT(d.DefectID) as DefectCount,
@@ -174,26 +184,29 @@ def quality_dashboard():
                 p.Name as ProductName,
                 p.Category as ProductCategory,
                 wc.Name as WorkCenterName
-            FROM 
+            FROM
                 Defects d
-            JOIN 
+            JOIN
                 QualityControl qc ON d.CheckID = qc.CheckID
-            JOIN 
+            JOIN
                 WorkOrders wo ON qc.OrderID = wo.OrderID
-            JOIN 
+            JOIN
                 Products p ON wo.ProductID = p.ProductID
             JOIN
                 WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
-            WHERE 
-                date(qc.Date) = date('now', '-1 day')
-            GROUP BY 
+            WHERE
+                qc.Date >= :yesterday_start AND qc.Date <= :yesterday_end
+            GROUP BY
                 d.DefectType
-            ORDER BY 
+            ORDER BY
                 DefectCount DESC
             LIMIT 10
             """
-            
-            defect_result = db_manager.execute_query(defects_query)
+
+            defect_result = db_manager.execute_query(
+                defects_query,
+                {"yesterday_start": yesterday_start, "yesterday_end": yesterday_end}
+            )
             
             if defect_result["success"] and defect_result["row_count"] > 0:
                 defects_df = pd.DataFrame(defect_result["rows"])
@@ -230,31 +243,34 @@ def quality_dashboard():
                     st.plotly_chart(fig1, use_container_width=True)
                 
                 with col2:
-                    # Get problem products from yesterday
+                    # Get problem products from yesterday using parameterized query
                     product_query = """
-                    SELECT 
+                    SELECT
                         p.Name as ProductName,
                         COUNT(d.DefectID) as DefectCount,
                         ROUND(AVG(qc.DefectRate) * 100, 2) as AvgDefectRate,
                         ROUND(AVG(qc.YieldRate) * 100, 2) as AvgYieldRate
-                    FROM 
+                    FROM
                         Products p
-                    JOIN 
+                    JOIN
                         WorkOrders wo ON p.ProductID = wo.ProductID
-                    JOIN 
+                    JOIN
                         QualityControl qc ON wo.OrderID = qc.OrderID
                     JOIN
                         Defects d ON qc.CheckID = d.CheckID
-                    WHERE 
-                        date(qc.Date) = date('now', '-1 day')
-                    GROUP BY 
+                    WHERE
+                        qc.Date >= :yesterday_start AND qc.Date <= :yesterday_end
+                    GROUP BY
                         p.Name
-                    ORDER BY 
+                    ORDER BY
                         DefectCount DESC
                     LIMIT 5
                     """
-                    
-                    product_result = db_manager.execute_query(product_query)
+
+                    product_result = db_manager.execute_query(
+                        product_query,
+                        {"yesterday_start": yesterday_start, "yesterday_end": yesterday_end}
+                    )
                     
                     if product_result["success"] and product_result["row_count"] > 0:
                         st.markdown("#### 🔍 Problem Products")
@@ -286,32 +302,35 @@ def quality_dashboard():
                 
                 # Get specific defect combinations (product + defect type + work center)
                 specific_query = """
-                SELECT 
+                SELECT
                     p.Name as ProductName,
                     d.DefectType,
                     wc.Name as WorkCenterName,
                     COUNT(d.DefectID) as DefectCount,
                     ROUND(AVG(d.Severity), 1) as AvgSeverity
-                FROM 
+                FROM
                     Defects d
-                JOIN 
+                JOIN
                     QualityControl qc ON d.CheckID = qc.CheckID
-                JOIN 
+                JOIN
                     WorkOrders wo ON qc.OrderID = wo.OrderID
-                JOIN 
+                JOIN
                     Products p ON wo.ProductID = p.ProductID
                 JOIN
                     WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
-                WHERE 
-                    date(qc.Date) = date('now', '-1 day')
-                GROUP BY 
+                WHERE
+                    qc.Date >= :yesterday_start AND qc.Date <= :yesterday_end
+                GROUP BY
                     p.Name, d.DefectType, wc.Name
-                ORDER BY 
+                ORDER BY
                     DefectCount DESC
                 LIMIT 10
                 """
-                
-                specific_result = db_manager.execute_query(specific_query)
+
+                specific_result = db_manager.execute_query(
+                    specific_query,
+                    {"yesterday_start": yesterday_start, "yesterday_end": yesterday_end}
+                )
                 
                 if specific_result["success"] and specific_result["row_count"] > 0:
                     st.markdown("#### 🎯 Action Items for Today")
@@ -344,28 +363,31 @@ def quality_dashboard():
         with tab2:
             st.subheader("Quality Trends")
             
-            # Get daily quality trend data
+            # Get daily quality trend data using parameterized query
             trend_query = """
-            SELECT 
+            SELECT
                 date(qc.Date) as InspectionDate,
                 COUNT(qc.CheckID) as InspectionCount,
                 ROUND(AVG(qc.DefectRate) * 100, 2) as AvgDefectRate,
                 ROUND(AVG(qc.ReworkRate) * 100, 2) as AvgReworkRate,
                 ROUND(AVG(qc.YieldRate) * 100, 2) as AvgYieldRate,
                 COUNT(DISTINCT wo.OrderID) as OrderCount
-            FROM 
+            FROM
                 QualityControl qc
-            JOIN 
+            JOIN
                 WorkOrders wo ON qc.OrderID = wo.OrderID
-            WHERE 
-                qc.Date >= date('now', '-30 day')
-            GROUP BY 
+            WHERE
+                qc.Date >= :thirty_days_ago
+            GROUP BY
                 date(qc.Date)
-            ORDER BY 
+            ORDER BY
                 InspectionDate
             """
-            
-            trend_result = db_manager.execute_query(trend_query)
+
+            trend_result = db_manager.execute_query(
+                trend_query,
+                {"thirty_days_ago": thirty_days_ago_date}
+            )
             
             if trend_result["success"] and trend_result["row_count"] > 0:
                 trend_df = pd.DataFrame(trend_result["rows"])
@@ -504,53 +526,63 @@ def quality_dashboard():
         
         with tab3:
             st.subheader("Work Center Focus")
-            
-            # Get yesterday's work center quality data
+
+            # Calculate two days ago date range
+            two_days_ago_start = date_range_start(two_days_ago_date)
+            two_days_ago_end = date_range_end(two_days_ago_date)
+
+            # Get yesterday's work center quality data using parameterized query
             wc_query = """
-            SELECT 
+            SELECT
                 wc.Name as WorkCenterName,
                 COUNT(qc.CheckID) as InspectionCount,
                 ROUND(AVG(qc.DefectRate) * 100, 2) as AvgDefectRate,
                 ROUND(AVG(qc.ReworkRate) * 100, 2) as AvgReworkRate,
                 ROUND(AVG(qc.YieldRate) * 100, 2) as AvgYieldRate,
                 COUNT(DISTINCT wo.OrderID) as OrderCount
-            FROM 
+            FROM
                 WorkCenters wc
             JOIN
                 WorkOrders wo ON wc.WorkCenterID = wo.WorkCenterID
             JOIN
                 QualityControl qc ON wo.OrderID = qc.OrderID
-            WHERE 
-                date(qc.Date) = date('now', '-1 day')
-            GROUP BY 
+            WHERE
+                qc.Date >= :yesterday_start AND qc.Date <= :yesterday_end
+            GROUP BY
                 wc.Name
-            ORDER BY 
+            ORDER BY
                 AvgDefectRate DESC
             """
-            
-            wc_result = db_manager.execute_query(wc_query)
-            
+
+            wc_result = db_manager.execute_query(
+                wc_query,
+                {"yesterday_start": yesterday_start, "yesterday_end": yesterday_end}
+            )
+
             if wc_result["success"] and wc_result["row_count"] > 0:
                 wc_df = pd.DataFrame(wc_result["rows"])
-                
+
                 # Get previous day work center data for comparison
                 prev_wc_query = """
-                SELECT 
+                SELECT
                     wc.Name as WorkCenterName,
                     ROUND(AVG(qc.DefectRate) * 100, 2) as AvgDefectRate
-                FROM 
+                FROM
                     WorkCenters wc
                 JOIN
                     WorkOrders wo ON wc.WorkCenterID = wo.WorkCenterID
                 JOIN
                     QualityControl qc ON wo.OrderID = qc.OrderID
-                WHERE 
-                    date(qc.Date) = date('now', '-2 day')
-                GROUP BY 
+                WHERE
+                    qc.Date >= :two_days_ago_start AND qc.Date <= :two_days_ago_end
+                GROUP BY
                     wc.Name
                 """
-                
-                prev_wc_result = db_manager.execute_query(prev_wc_query)
+
+                prev_wc_result = db_manager.execute_query(
+                    prev_wc_query,
+                    {"two_days_ago_start": two_days_ago_start, "two_days_ago_end": two_days_ago_end}
+                )
                 
                 if prev_wc_result["success"] and prev_wc_result["row_count"] > 0:
                     prev_wc_df = pd.DataFrame(prev_wc_result["rows"])
@@ -668,34 +700,41 @@ def quality_dashboard():
                     # Generate focus recommendations for each work center
                     for i, row in focus_wc.iterrows():
                         with st.expander(f"🔍 {row['WorkCenterName']} - Defect Rate: {row['AvgDefectRate']:.1f}%"):
-                            # Get specific defects for this work center
-                            wc_defects_query = f"""
-                            SELECT 
+                            # Get specific defects for this work center using parameterized query
+                            wc_defects_query = """
+                            SELECT
                                 d.DefectType,
                                 COUNT(d.DefectID) as DefectCount,
                                 AVG(d.Severity) as AvgSeverity,
                                 p.Name as ProductName
-                            FROM 
+                            FROM
                                 Defects d
-                            JOIN 
+                            JOIN
                                 QualityControl qc ON d.CheckID = qc.CheckID
-                            JOIN 
+                            JOIN
                                 WorkOrders wo ON qc.OrderID = wo.OrderID
-                            JOIN 
+                            JOIN
                                 Products p ON wo.ProductID = p.ProductID
                             JOIN
                                 WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
-                            WHERE 
-                                date(qc.Date) = date('now', '-1 day')
-                                AND wc.Name = '{row['WorkCenterName']}'
-                            GROUP BY 
+                            WHERE
+                                qc.Date >= :yesterday_start AND qc.Date <= :yesterday_end
+                                AND wc.Name = :work_center_name
+                            GROUP BY
                                 d.DefectType, p.Name
-                            ORDER BY 
+                            ORDER BY
                                 DefectCount DESC
                             LIMIT 5
                             """
-                            
-                            wc_defects_result = db_manager.execute_query(wc_defects_query)
+
+                            wc_defects_result = db_manager.execute_query(
+                                wc_defects_query,
+                                {
+                                    "yesterday_start": yesterday_start,
+                                    "yesterday_end": yesterday_end,
+                                    "work_center_name": row['WorkCenterName']
+                                }
+                            )
                             
                             if wc_defects_result["success"] and wc_defects_result["row_count"] > 0:
                                 wc_defects_df = pd.DataFrame(wc_defects_result["rows"])

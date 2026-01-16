@@ -28,6 +28,8 @@ from typing import Dict, Any, List, Optional, Tuple, Union
 from enum import Enum
 from dataclasses import dataclass
 
+from app_factory.shared.db_utils import days_ago
+
 
 class MeetingErrorSeverity(Enum):
     """Error severity levels for production meeting contexts."""
@@ -916,15 +918,16 @@ class MeetingTimeoutHandler:
     def _create_meeting_quick_query(self, original_query: str) -> str:
         """Create a quick version of a query suitable for meeting time constraints."""
         query_lower = original_query.lower()
-        
+
         # Add aggressive limits for meeting efficiency
         if 'limit' not in query_lower:
             original_query += ' LIMIT 20'
-        
-        # Focus on recent data for meetings
+
+        # Focus on recent data for meetings (use DB-agnostic date)
         if 'where' not in query_lower and any(term in query_lower for term in ['production', 'quality', 'equipment']):
-            original_query += " WHERE date >= date('now', '-1 day')"
-        
+            yesterday = days_ago(1)
+            original_query += f" WHERE date >= '{yesterday}'"
+
         return original_query
 
 

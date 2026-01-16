@@ -1,7 +1,7 @@
 """
 Database Tools for MES Agents.
 
-This module provides Strands SDK tools for SQLite database access with enhanced
+This module provides Strands SDK tools for database access with enhanced
 error handling, intelligent suggestions, and educational feedback.
 
 Key Tools:
@@ -10,12 +10,11 @@ Key Tools:
 
 Features:
 - Query validation and safety checks
-- SQLite-specific error analysis
+- DB-agnostic error analysis via SQLAlchemy
 - Recovery suggestions and educational tips
 - Performance monitoring and optimization hints
 """
 
-import sqlite3
 import pandas as pd
 import logging
 from typing import Dict, Any, List, Optional
@@ -23,43 +22,55 @@ from strands import tool
 from ..error_handling import IntelligentErrorAnalyzer, ErrorContext, TimeoutHandler
 from datetime import datetime
 
+from app_factory.shared.database import DatabaseManager
+
+# Shared database manager instance
+_db_manager: Optional[DatabaseManager] = None
+
+
+def _get_db_manager() -> DatabaseManager:
+    """Get or create the shared database manager instance."""
+    global _db_manager
+    if _db_manager is None:
+        _db_manager = DatabaseManager()
+    return _db_manager
+
 
 @tool
 def run_sqlite_query(query: str) -> Dict[str, Any]:
     """
-    Execute SQL query on MES SQLite database with enhanced error handling and recovery.
-    
+    Execute SQL query on MES database with enhanced error handling and recovery.
+
     Args:
         query: SQL query string to execute
-        
+
     Returns:
         Dictionary containing query results, metadata, and comprehensive error analysis
     """
     logger = logging.getLogger(__name__)
     start_time = datetime.now()
-    
+
     try:
         # Validate query before execution
         validation_result = _validate_query(query)
         if not validation_result['valid']:
             return _create_validation_error_response(query, validation_result)
-        
-        # Connect to the MES database with timeout
-        conn = sqlite3.connect('mes.db', timeout=30.0)
-        
-        try:
-            # Execute query and get results as DataFrame
-            df = pd.read_sql_query(query, conn)
-            
-            # Convert DataFrame to list of dictionaries for agent processing
-            results = df.to_dict('records')
-            
-            # Get column information
-            columns = list(df.columns)
-            row_count = len(df)
-            
+
+        # Execute query using DatabaseManager
+        db = _get_db_manager()
+        result = db.execute_query(query)
+
+        if result["success"]:
+            # Convert to agent-friendly format
+            results = result["rows"]
+            columns = result["column_names"]
+            row_count = result["row_count"]
+
+            # Create DataFrame for data type info
+            df = pd.DataFrame(results) if results else pd.DataFrame()
+
             execution_time = (datetime.now() - start_time).total_seconds()
-            
+
             return {
                 'success': True,
                 'results': results,
@@ -74,13 +85,10 @@ def run_sqlite_query(query: str) -> Dict[str, Any]:
                     'columns_count': len(columns)
                 }
             }
-            
-        finally:
-            conn.close()
-        
-    except sqlite3.Error as e:
-        return _handle_sqlite_error(e, query, start_time)
-        
+        else:
+            # Handle database error
+            return _handle_db_error(result.get("error", "Unknown error"), query, start_time)
+
     except Exception as e:
         return _handle_general_error(e, query, start_time)
 
@@ -144,113 +152,110 @@ def _get_sqlite_error_suggestions(error_message: str, query: str) -> List[str]:
     return suggestions
 
 
-@tool  
+@tool
 def get_database_schema(table_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Retrieve database schema information for agent analysis.
-    
+
     Args:
         table_name: Optional specific table name. If None, returns all tables.
-        
+
     Returns:
         Dictionary containing comprehensive schema information
     """
     try:
-        conn = sqlite3.connect('mes.db')
-        cursor = conn.cursor()
-        
+        db = _get_db_manager()
+        schema = db.get_schema()
+
+        if "error" in schema:
+            return {
+                'success': False,
+                'error': schema["error"],
+                'error_type': 'schema_error'
+            }
+
         if table_name:
             # Get specific table schema
-            schema_info = _get_table_schema(cursor, table_name)
-            if not schema_info:
+            if table_name not in schema or table_name == "__metadata__":
+                available_tables = [t for t in schema.keys() if t != "__metadata__"]
                 return {
                     'success': False,
                     'error': f"Table '{table_name}' not found",
-                    'available_tables': _get_all_table_names(cursor)
+                    'available_tables': available_tables
                 }
             return {
                 'success': True,
                 'table_name': table_name,
-                'schema': schema_info
+                'schema': schema[table_name]
             }
         else:
-            # Get all tables schema
-            all_tables = _get_all_tables_schema(cursor)
+            # Get all tables schema (exclude metadata)
+            tables = {k: v for k, v in schema.items() if k != "__metadata__"}
             return {
                 'success': True,
-                'tables': all_tables,
-                'table_count': len(all_tables)
+                'tables': tables,
+                'table_count': len(tables)
             }
-            
+
     except Exception as e:
         return {
             'success': False,
             'error': str(e),
             'error_type': 'schema_error'
         }
-    finally:
-        conn.close()
 
 
-def _get_table_schema(cursor: sqlite3.Cursor, table_name: str) -> Optional[Dict[str, Any]]:
-    """Get detailed schema information for a specific table."""
-    try:
-        # Get table info
-        cursor.execute(f"PRAGMA table_info({table_name})")
-        columns = cursor.fetchall()
-        
-        if not columns:
-            return None
-            
-        # Format column information
-        column_info = []
-        for col in columns:
-            column_info.append({
-                'name': col[1],
-                'type': col[2],
-                'not_null': bool(col[3]),
-                'default_value': col[4],
-                'primary_key': bool(col[5])
-            })
-        
-        # Get sample data (first 3 rows)
-        cursor.execute(f"SELECT * FROM {table_name} LIMIT 3")
-        sample_rows = cursor.fetchall()
-        
-        # Get row count
-        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-        row_count = cursor.fetchone()[0]
-        
-        return {
-            'columns': column_info,
-            'sample_data': sample_rows,
-            'row_count': row_count,
-            'column_count': len(column_info)
-        }
-        
-    except sqlite3.Error:
-        return None
+def _handle_db_error(error_message: str, query: str, start_time: datetime) -> Dict[str, Any]:
+    """
+    Handle database errors with comprehensive analysis and recovery suggestions.
 
+    Args:
+        error_message: Error message from DatabaseManager
+        query: Original query
+        start_time: Query start time
 
-def _get_all_tables_schema(cursor: sqlite3.Cursor) -> Dict[str, Any]:
-    """Get schema information for all tables in the database."""
-    # Get all table names
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    table_names = [row[0] for row in cursor.fetchall()]
-    
-    tables_info = {}
-    for table_name in table_names:
-        schema = _get_table_schema(cursor, table_name)
-        if schema:
-            tables_info[table_name] = schema
-    
-    return tables_info
+    Returns:
+        Comprehensive error response with recovery options
+    """
+    logger = logging.getLogger(__name__)
+    execution_time = (datetime.now() - start_time).total_seconds()
 
+    # Create error context for analysis
+    error_context = ErrorContext(
+        original_query=query,
+        error_message=error_message,
+        error_type='database_error',
+        timestamp=datetime.now(),
+        execution_time=execution_time
+    )
 
-def _get_all_table_names(cursor: sqlite3.Cursor) -> List[str]:
-    """Get list of all table names in the database."""
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    return [row[0] for row in cursor.fetchall()]
+    # Analyze error with intelligent analyzer
+    analyzer = IntelligentErrorAnalyzer()
+    analysis = analyzer.analyze_error(error_context)
+
+    # Enhanced DB-specific suggestions
+    db_suggestions = _get_enhanced_sqlite_suggestions(error_message, query)
+
+    # Try to provide recovery options
+    recovery_options = _generate_sqlite_recovery_options(error_message, query)
+
+    logger.warning(f"Database error in query: {query[:100]}... Error: {error_message}")
+
+    return {
+        'success': False,
+        'error': error_message,
+        'error_type': 'database_error',
+        'error_category': analysis.category.value,
+        'severity': analysis.severity.value,
+        'query': query,
+        'execution_time': execution_time,
+        'user_friendly_message': analysis.user_friendly_message,
+        'root_cause': analysis.root_cause,
+        'suggestions': db_suggestions,
+        'recovery_options': recovery_options,
+        'educational_content': analysis.educational_content,
+        'alternative_approaches': analysis.alternative_approaches
+    }
 
 
 def _validate_query(query: str) -> Dict[str, Any]:
@@ -313,64 +318,6 @@ def _create_validation_error_response(query: str, validation_result: Dict[str, A
             "🔒 **Security**: Modifying operations (INSERT, UPDATE, DELETE) are not allowed",
             "⚡ **Performance**: Use LIMIT clauses to control result size"
         ]
-    }
-
-
-def _handle_sqlite_error(error: sqlite3.Error, query: str, start_time: datetime) -> Dict[str, Any]:
-    """
-    Handle SQLite errors with comprehensive analysis and recovery suggestions.
-    
-    Args:
-        error: SQLite error object
-        query: Original query
-        start_time: Query start time
-        
-    Returns:
-        Comprehensive error response with recovery options
-    """
-    logger = logging.getLogger(__name__)
-    execution_time = (datetime.now() - start_time).total_seconds()
-    error_message = str(error)
-    
-    # Create error context for analysis
-    error_context = ErrorContext(
-        original_query=query,
-        error_message=error_message,
-        error_type='sqlite_error',
-        timestamp=datetime.now(),
-        execution_time=execution_time
-    )
-    
-    # Analyze error with intelligent analyzer
-    analyzer = IntelligentErrorAnalyzer()
-    analysis = analyzer.analyze_error(error_context)
-    
-    # Enhanced SQLite-specific suggestions
-    sqlite_suggestions = _get_enhanced_sqlite_suggestions(error_message, query)
-    
-    # Try to provide recovery options
-    recovery_options = _generate_sqlite_recovery_options(error_message, query)
-    
-    logger.warning(f"SQLite error in query: {query[:100]}... Error: {error_message}")
-    
-    return {
-        'success': False,
-        'error': error_message,
-        'error_type': 'sqlite_error',
-        'error_category': analysis.category.value,
-        'severity': analysis.severity.value,
-        'query': query,
-        'execution_time': execution_time,
-        'user_friendly_message': analysis.user_friendly_message,
-        'root_cause': analysis.root_cause,
-        'suggestions': sqlite_suggestions,
-        'recovery_options': recovery_options,
-        'educational_content': analysis.educational_content,
-        'alternative_approaches': analysis.alternative_approaches,
-        'technical_details': {
-            'sqlite_error_code': getattr(error, 'sqlite_errorcode', None),
-            'sqlite_error_name': getattr(error, 'sqlite_errorname', None)
-        }
     }
 
 

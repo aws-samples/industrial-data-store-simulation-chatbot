@@ -15,6 +15,7 @@ import asyncio
 from datetime import datetime
 
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.db_utils import today, days_ahead, date_diff_days
 from app_factory.production_meeting_agents.agent_manager import ProductionMeetingAgentManager
 from app_factory.production_meeting_agents.config import default_config
 from app_factory.production_meeting.analysis_cache_manager import AnalysisCacheManager
@@ -278,25 +279,28 @@ def generate_predictive_insights():
         inventory_df = pd.DataFrame(result["rows"])
         
         # Get consumption patterns
+        from app_factory.shared.db_utils import days_ago
+        thirty_days_ago = days_ago(30)
+
         consumption_query = """
-        SELECT 
+        SELECT
             i.ItemID,
             i.Name as ItemName,
             AVG(mc.ActualQuantity) as AvgDailyConsumption,
-            COUNT(DISTINCT wo.OrderID) / COUNT(DISTINCT date(mc.ConsumptionDate)) as OrdersPerDay
-        FROM 
+            COUNT(DISTINCT wo.OrderID) as TotalOrders
+        FROM
             MaterialConsumption mc
-        JOIN 
+        JOIN
             Inventory i ON mc.ItemID = i.ItemID
-        JOIN 
+        JOIN
             WorkOrders wo ON mc.OrderID = wo.OrderID
-        WHERE 
-            mc.ConsumptionDate >= date('now', '-30 day')
-        GROUP BY 
+        WHERE
+            mc.ConsumptionDate >= :thirty_days_ago
+        GROUP BY
             i.ItemID, i.Name
         """
-        
-        consumption_result = db_manager.execute_query(consumption_query)
+
+        consumption_result = db_manager.execute_query(consumption_query, {"thirty_days_ago": thirty_days_ago})
         
         if consumption_result["success"] and consumption_result["row_count"] > 0:
             consumption_df = pd.DataFrame(consumption_result["rows"])
@@ -345,27 +349,29 @@ def generate_predictive_insights():
                             st.progress(min(1.0, row['CurrentQuantity'] / row['ReorderLevel']))
         
         # Find upcoming machine capacity issues
+        seven_days_ahead = days_ahead(7)
+
         capacity_query = """
-        SELECT 
+        SELECT
             wc.Name as WorkCenterName,
             COUNT(wo.OrderID) as PlannedOrders,
             SUM(wo.Quantity) as TotalQuantity,
             wc.Capacity as HourlyCapacity,
             SUM(wo.Quantity) / wc.Capacity as EstimatedHours
-        FROM 
+        FROM
             WorkOrders wo
-        JOIN 
+        JOIN
             WorkCenters wc ON wo.WorkCenterID = wc.WorkCenterID
-        WHERE 
+        WHERE
             wo.Status = 'scheduled'
-            AND wo.PlannedStartTime <= date('now', '+7 day')
-        GROUP BY 
+            AND wo.PlannedStartTime <= :seven_days_ahead
+        GROUP BY
             wc.Name, wc.Capacity
-        ORDER BY 
+        ORDER BY
             EstimatedHours DESC
         """
-        
-        capacity_result = db_manager.execute_query(capacity_query)
+
+        capacity_result = db_manager.execute_query(capacity_query, {"seven_days_ahead": seven_days_ahead})
         
         if capacity_result["success"] and capacity_result["row_count"] > 0:
             capacity_df = pd.DataFrame(capacity_result["rows"])
@@ -401,47 +407,63 @@ def generate_predictive_insights():
                         st.markdown(f"<span style='color:{bar_color}'>{message} - {utilization * 100:.0f}% utilization</span>", unsafe_allow_html=True)
         
         # Find upcoming maintenance issues
+        today_str = today()
+        week_ahead = days_ahead(7)
+
         maintenance_query = """
-        SELECT 
+        SELECT
             m.Name as MachineName,
             m.Type as MachineType,
             wc.Name as WorkCenterName,
-            m.NextMaintenanceDate,
-            julianday(m.NextMaintenanceDate) - julianday('now') as DaysUntilMaintenance
-        FROM 
+            m.NextMaintenanceDate
+        FROM
             Machines m
-        JOIN 
+        JOIN
             WorkCenters wc ON m.WorkCenterID = wc.WorkCenterID
-        WHERE 
-            julianday(m.NextMaintenanceDate) - julianday('now') BETWEEN 0 AND 7
-        ORDER BY 
-            DaysUntilMaintenance ASC
+        WHERE
+            m.NextMaintenanceDate >= :today AND m.NextMaintenanceDate <= :week_ahead
+        ORDER BY
+            m.NextMaintenanceDate ASC
         """
-        
-        maintenance_result = db_manager.execute_query(maintenance_query)
-        
+
+        maintenance_result = db_manager.execute_query(
+            maintenance_query,
+            {"today": today_str, "week_ahead": week_ahead}
+        )
+
         if maintenance_result["success"] and maintenance_result["row_count"] > 0:
             st.write("### Upcoming Machine Maintenance")
-            
+
             maintenance_df = pd.DataFrame(maintenance_result["rows"])
-            
+            # Calculate DaysUntilMaintenance in Python (replaces julianday)
+            maintenance_df["DaysUntilMaintenance"] = maintenance_df["NextMaintenanceDate"].apply(
+                lambda x: date_diff_days(x[:10] if x else today_str, today_str)
+            )
+
             # Get production schedule for impacted machines
             for i, row in maintenance_df.iterrows():
                 # Query for work orders that might be impacted
-                impact_query = f"""
-                SELECT 
+                # Use parameterized query to prevent SQL injection
+                impact_query = """
+                SELECT
                     COUNT(wo.OrderID) as AffectedOrders,
                     SUM(wo.Quantity) as AffectedQuantity
-                FROM 
+                FROM
                     WorkOrders wo
-                WHERE 
-                    wo.MachineID = (SELECT MachineID FROM Machines WHERE Name = '{row['MachineName']}')
+                WHERE
+                    wo.MachineID = (SELECT MachineID FROM Machines WHERE Name = :machine_name)
                     AND wo.Status = 'scheduled'
-                    AND julianday(wo.PlannedStartTime) <= julianday('{row['NextMaintenanceDate']}')
-                    AND julianday(wo.PlannedEndTime) >= julianday('{row['NextMaintenanceDate']}')
+                    AND wo.PlannedStartTime <= :maintenance_date
+                    AND wo.PlannedEndTime >= :maintenance_date
                 """
-                
-                impact_result = db_manager.execute_query(impact_query)
+
+                impact_result = db_manager.execute_query(
+                    impact_query,
+                    {
+                        "machine_name": row['MachineName'],
+                        "maintenance_date": row['NextMaintenanceDate']
+                    }
+                )
                 
                 if impact_result["success"] and impact_result["row_count"] > 0:
                     impact_data = impact_result["rows"][0]
