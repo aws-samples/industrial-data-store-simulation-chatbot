@@ -457,7 +457,7 @@ def equipment_status_dashboard():
     st.subheader("Upcoming Maintenance")
     
     # Get machines due for maintenance
-    maintenance_data = db_manager.get_upcoming_maintenance(days_ahead=7)
+    maintenance_data = db_manager.get_upcoming_maintenance(days_forward=7)
     
     if not maintenance_data.empty:
         # Display machines needing maintenance

@@ -1332,7 +1332,7 @@ def display_production_schedule():
     
     # Upcoming maintenance that might impact production
     with st.expander("Upcoming Maintenance (Next 7 Days)", expanded=False):
-        maintenance_data = db_manager.get_upcoming_maintenance(days_ahead=7)
+        maintenance_data = db_manager.get_upcoming_maintenance(days_forward=7)
         
         if not maintenance_data.empty:
             # Add impact assessment
