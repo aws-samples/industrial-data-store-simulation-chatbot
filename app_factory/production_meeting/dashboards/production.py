@@ -27,6 +27,10 @@ def get_oee_color(oee_value):
 
 def create_enhanced_gauge(value, title, target=85, max_value=100):
     """Create an enhanced gauge chart - theme compatible with centered number"""
+    # Handle None values
+    if value is None:
+        value = 0
+
     # Calculate delta for display
     delta_value = value - target
     delta_sign = "+" if delta_value >= 0 else ""
@@ -521,20 +525,20 @@ def display_performance_metrics():
             metrics_cols = st.columns(3)
             
             metrics_cols[0].metric(
-                "Availability", 
-                f"{oee_data['AvgAvailability']:.1f}%",
+                "Availability",
+                f"{oee_data['AvgAvailability']:.1f}%" if oee_data['AvgAvailability'] is not None else "N/A",
                 help="Percentage of scheduled time that the operation is available to operate"
             )
-            
+
             metrics_cols[1].metric(
-                "Performance", 
-                f"{oee_data['AvgPerformance']:.1f}%",
+                "Performance",
+                f"{oee_data['AvgPerformance']:.1f}%" if oee_data['AvgPerformance'] is not None else "N/A",
                 help="Speed at which work center runs as a percentage of its designed speed"
             )
-            
+
             metrics_cols[2].metric(
-                "Quality", 
-                f"{oee_data['AvgQuality']:.1f}%",
+                "Quality",
+                f"{oee_data['AvgQuality']:.1f}%" if oee_data['AvgQuality'] is not None else "N/A",
                 help="Good units produced as a percentage of total units started"
             )
             
