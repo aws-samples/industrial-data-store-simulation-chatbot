@@ -254,6 +254,8 @@ class DailyAnalysisScheduler:
     async def run_daily_analysis(self):
         """Main method to run daily analysis"""
         try:
+            data_regenerated = False
+
             # Step 1: Generate fresh data (if enabled)
             if self.generate_data:
                 logger.info("Step 1: Generating fresh synthetic data...")
@@ -261,21 +263,23 @@ class DailyAnalysisScheduler:
                 if not data_success:
                     logger.warning("Data generation failed, proceeding with existing data")
                 else:
+                    data_regenerated = True
                     logger.info("Fresh data generated successfully")
-            
+
             # Step 2: Initialize agent manager
             logger.info("Step 2: Initializing agent manager...")
             await self.initialize()
-            
+
             # Step 3: Check if analysis already exists for today
+            # Always regenerate analysis when the underlying data was refreshed,
+            # otherwise cached insights will contradict the live dashboard.
             today_cache = self.get_cache_filename()
-            if today_cache.exists():
+            if today_cache.exists() and not data_regenerated:
                 logger.info(f"Daily analysis already exists for today: {today_cache}")
-                
-                # Check if it's recent (within last 6 hours)
+
                 file_time = datetime.fromtimestamp(today_cache.stat().st_mtime)
                 if datetime.now() - file_time < timedelta(hours=6):
-                    logger.info("Recent analysis found, skipping generation")
+                    logger.info("Recent analysis found and data unchanged, skipping generation")
                     return
                 else:
                     logger.info("Analysis is older than 6 hours, regenerating")
