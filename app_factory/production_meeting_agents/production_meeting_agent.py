@@ -47,7 +47,12 @@ RESPONSE STYLE: Ultra-concise, data-driven insights. No introductions or conclus
 _SPECIALISTS = {
     'production': {
         'domain': 'Production',
-        'focus': 'Work order completion, production throughput, bottleneck identification, and shift performance.',
+        'focus': (
+            'Work order completion, production throughput, bottleneck identification, and shift performance. '
+            'Data is a live mid-day snapshot: in_progress orders naturally show partial ActualProduction, and '
+            "today's completed total is partial until end of day — judge completion rates on completed orders "
+            '(ActualProduction vs Quantity), not on how much of the daily plan is done so far.'
+        ),
         'tables': 'WorkOrders, Machines, and related tables',
     },
     'quality': {
@@ -78,17 +83,22 @@ def _make_model() -> BedrockModel:
 
 
 def _get_specialist_agent(key: str) -> Agent:
-    """Get or create a cached specialist agent."""
-    if key not in _agent_cache:
-        spec = _SPECIALISTS[key]
-        _agent_cache[key] = Agent(
-            system_prompt=SPECIALIST_PROMPT_TEMPLATE.format(
-                domain=spec['domain'], focus=spec['focus']
-            ),
-            tools=SPECIALIST_TOOLS,
-            model=_make_model(),
-        )
-    return _agent_cache[key]
+    """Create a fresh specialist agent.
+
+    Not cached: specialists are invoked concurrently (the scheduler runs the
+    four domain analyses in parallel, and the executive summary calls all four
+    tools in parallel), and a Strands Agent rejects concurrent invocations of
+    the same instance. Construction is cheap and Bedrock prompt caching keys
+    on prompt content, not the agent object.
+    """
+    spec = _SPECIALISTS[key]
+    return Agent(
+        system_prompt=SPECIALIST_PROMPT_TEMPLATE.format(
+            domain=spec['domain'], focus=spec['focus']
+        ),
+        tools=SPECIALIST_TOOLS,
+        model=_make_model(),
+    )
 
 
 def reset_agents():

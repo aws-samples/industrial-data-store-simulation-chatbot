@@ -822,8 +822,15 @@ class MESSimulator:
                 
                 # Generate realistic dates - better maintenance schedule
                 installation_date = datetime.now() - timedelta(days=random.randint(90, 1000))
-                last_maintenance = datetime.now() - timedelta(days=random.randint(1, 30))  # More recent maintenance
-                maintenance_frequency = random.randint(200, 300)  # Increased from 160-200 to 200-300 hours
+                maintenance_frequency = random.randint(200, 300)  # hours (~8-12 days)
+                # Most machines (90%) are inside their maintenance cycle, so
+                # NextMaintenanceDate lands in the future; ~10% are overdue —
+                # a plant-wide overdue fleet reads as broken data, not a story
+                if random.random() < 0.9:
+                    days_into_cycle = random.uniform(0.1, 0.9) * maintenance_frequency / 24
+                else:
+                    days_into_cycle = random.uniform(1.05, 1.3) * maintenance_frequency / 24
+                last_maintenance = datetime.now() - timedelta(days=days_into_cycle)
                 next_maintenance = last_maintenance + timedelta(hours=maintenance_frequency)
                 
                 # Machine status weighted toward running - reduced breakdown probability
@@ -1866,7 +1873,7 @@ class MESSimulator:
             defect_category = 'general'
         
         # Base defect rate - affected by product type, work center, machine, employee, and time
-        base_defect_rate = 0.02 * product_quality_factor * work_center_quality_factor * machine_quality_factor * employee_quality_factor
+        base_defect_rate = 0.012 * product_quality_factor * work_center_quality_factor * machine_quality_factor * employee_quality_factor
         
         # Adjust for quality incident if present
         if quality_incident:
@@ -1875,7 +1882,7 @@ class MESSimulator:
         else:
             # Normal variation around base rate
             defect_rate = base_defect_rate * random.uniform(0.5, 1.5)
-            rework_rate = round(random.uniform(0, 0.1), 4)  # 0-10% rework rate
+            rework_rate = round(random.uniform(0, 0.03), 4)  # 0-3% rework rate
         
         # Status affects quality - in progress has higher defect rate as issues not yet resolved
         if status == 'completed':
@@ -1899,9 +1906,9 @@ class MESSimulator:
         yield_rate = round(1 - defect_rate - rework_rate, 4)  # Remaining percentage
         
         # Weighted result based on actual rates
-        if defect_rate + rework_rate < 0.05:
+        if defect_rate + rework_rate < 0.08:
             result = 'pass'
-        elif defect_rate + rework_rate < 0.15:
+        elif defect_rate + rework_rate < 0.20:
             result = 'rework'
         else:
             result = 'fail'
@@ -2282,20 +2289,34 @@ class MESSimulator:
         """
         logger.info("Rebalancing inventory levels based on production requirements")
 
-        # Get material requirements for scheduled work orders in next 7 days
+        # Weekly demand per material: the larger of (a) scheduled work orders
+        # for the next 7 days and (b) actual consumption over the last 7 days.
+        # Dashboards and agents compute days-of-supply from recent consumption,
+        # so sizing stock only from the (often lighter) forward schedule makes
+        # every item look critically short.
         requirements_query = text("""
             SELECT
                 i.ItemID,
                 i.Name,
                 i.Quantity as CurrentQuantity,
                 i.LeadTime,
-                COALESCE(SUM(bom.Quantity * wo.Quantity), 0) as RequiredQuantity
+                MAX(
+                    COALESCE((
+                        SELECT SUM(bom.Quantity * wo.Quantity)
+                        FROM BillOfMaterials bom
+                        JOIN WorkOrders wo ON wo.ProductID = bom.ProductID
+                            AND wo.Status = 'scheduled'
+                            AND wo.PlannedStartTime <= date('now', '+7 day')
+                        WHERE bom.ComponentID = i.ItemID
+                    ), 0),
+                    COALESCE((
+                        SELECT SUM(mc.ActualQuantity)
+                        FROM MaterialConsumption mc
+                        WHERE mc.ItemID = i.ItemID
+                            AND mc.ConsumptionDate >= date('now', '-7 day')
+                    ), 0)
+                ) as RequiredQuantity
             FROM Inventory i
-            LEFT JOIN BillOfMaterials bom ON bom.ComponentID = i.ItemID
-            LEFT JOIN WorkOrders wo ON wo.ProductID = bom.ProductID
-                AND wo.Status = 'scheduled'
-                AND wo.PlannedStartTime <= date('now', '+7 day')
-            GROUP BY i.ItemID, i.Name, i.Quantity, i.LeadTime
         """)
 
         result = session.execute(requirements_query)
@@ -2305,9 +2326,10 @@ class MESSimulator:
             logger.info("No materials to rebalance")
             return
 
-        # Select 3-4 items to keep in shortage for demo purposes
+        # Select a couple of items to keep in shortage for demo purposes —
+        # enough for one clear inventory story without drowning the briefing
         materials_with_demand = [m for m in materials if m[4] and m[4] > 0]
-        num_shortage_items = min(4, len(materials_with_demand))
+        num_shortage_items = min(2, len(materials_with_demand))
         shortage_items = set()
 
         if materials_with_demand:
@@ -2325,8 +2347,9 @@ class MESSimulator:
                 weekly_rate = required_qty / 7  # Daily consumption rate * 7
 
                 if item_id in shortage_items:
-                    # Shortage items: only 5-20% of weekly requirement
-                    coverage = random.uniform(0.05, 0.20)
+                    # Shortage items: 30-50% of weekly requirement (~2-3.5 days
+                    # of supply) — clearly below reorder, not "line stops today"
+                    coverage = random.uniform(0.30, 0.50)
                     new_quantity = int(required_qty * coverage)
                 else:
                     # Normal items: 100-140% of weekly requirement to ensure adequate supply
@@ -2340,9 +2363,10 @@ class MESSimulator:
             reorder_level = int(daily_rate * (lead_time + safety_days))
             reorder_level = max(10, reorder_level)  # Minimum reorder level
 
-            # For shortage items, set reorder level much higher than current stock
+            # For shortage items, make sure the reorder level sits clearly above
+            # current stock so the shortage is visible, without looking absurd
             if item_id in shortage_items:
-                reorder_level = max(reorder_level, int(new_quantity * 5))  # 5x current stock
+                reorder_level = max(reorder_level, int(new_quantity * 1.5))
 
             # Update the inventory record
             update_query = text("""
@@ -2382,15 +2406,19 @@ class MESSimulator:
             logged_downtime[(row.MachineID, row.day)] = row.minutes or 0
 
         # Machine type baseline metrics - different machines have different baseline performance
+        # Baselines are set high because several degradation factors multiply
+        # on top of them (maintenance cycle, machine age, weekends, mini
+        # failures). Net plant OEE should land in the 70-80% range — below the
+        # 85% target line the dashboards draw, but a plausible running plant.
         machine_baselines = {
-            "Frame Welding": {"availability": 0.85, "performance": 0.80, "quality": 0.95},
-            "Wheel Assembly": {"availability": 0.88, "performance": 0.85, "quality": 0.97},
-            "Paint Booth": {"availability": 0.82, "performance": 0.78, "quality": 0.94},
-            "Battery Assembly": {"availability": 0.86, "performance": 0.82, "quality": 0.98},
-            "Motor Assembly": {"availability": 0.87, "performance": 0.83, "quality": 0.96},
-            "Final Assembly": {"availability": 0.90, "performance": 0.85, "quality": 0.98},
-            "Quality Control": {"availability": 0.92, "performance": 0.88, "quality": 0.99},
-            "Packaging": {"availability": 0.91, "performance": 0.86, "quality": 0.97}
+            "Frame Welding": {"availability": 0.94, "performance": 0.90, "quality": 0.96},
+            "Wheel Assembly": {"availability": 0.95, "performance": 0.92, "quality": 0.97},
+            "Paint Booth": {"availability": 0.92, "performance": 0.89, "quality": 0.95},
+            "Battery Assembly": {"availability": 0.94, "performance": 0.91, "quality": 0.98},
+            "Motor Assembly": {"availability": 0.95, "performance": 0.91, "quality": 0.97},
+            "Final Assembly": {"availability": 0.96, "performance": 0.93, "quality": 0.98},
+            "Quality Control": {"availability": 0.97, "performance": 0.94, "quality": 0.99},
+            "Packaging": {"availability": 0.96, "performance": 0.93, "quality": 0.97}
         }
         
         # For each machine, create daily OEE metrics
@@ -2404,7 +2432,7 @@ class MESSimulator:
             
             # Get the baseline metrics for this machine type
             baseline = machine_baselines.get(machine_type, {
-                "availability": 0.88, "performance": 0.82, "quality": 0.96
+                "availability": 0.94, "performance": 0.90, "quality": 0.96
             })
             
             # Get maintenance information
@@ -2416,12 +2444,12 @@ class MESSimulator:
             # Machine age factor - older machines have lower baseline
             days_since_installation = (datetime.now() - installation_date).days if installation_date else 365
             years_old = days_since_installation / 365
-            age_factor = max(0.85, 1.0 - (years_old * 0.02))  # 2% degradation per year, minimum 85%
-            
+            age_factor = max(0.94, 1.0 - (years_old * 0.01))  # 1% degradation per year, minimum 94%
+
             # Different degradation rates for different metrics
             availability_age_impact = age_factor * 0.9 + 0.1  # Less impacted by age
             performance_age_impact = age_factor * 0.8 + 0.2  # More impacted by age
-            quality_age_impact = age_factor * 0.95 + 0.05  # Least impacted by age
+            quality_age_impact = age_factor * 0.1 + 0.9  # Barely impacted by age
             
             current_date = start_date
             
@@ -2444,9 +2472,9 @@ class MESSimulator:
                 
                 # Performance degradation curve - different curves for different metrics
                 # Availability drops more quickly than other metrics as maintenance approaches
-                availability_maintenance_factor = max(0.8, 1.0 - (0.2 * (maintenance_cycle_position ** 1.5)))
-                performance_maintenance_factor = max(0.85, 1.0 - (0.15 * (maintenance_cycle_position ** 1.2)))
-                quality_maintenance_factor = max(0.9, 1.0 - (0.1 * maintenance_cycle_position))
+                availability_maintenance_factor = max(0.92, 1.0 - (0.08 * (maintenance_cycle_position ** 1.5)))
+                performance_maintenance_factor = max(0.93, 1.0 - (0.07 * (maintenance_cycle_position ** 1.2)))
+                quality_maintenance_factor = max(0.98, 1.0 - (0.02 * maintenance_cycle_position))
                 
                 # Day-specific variation
                 weekday = current_date.weekday()
