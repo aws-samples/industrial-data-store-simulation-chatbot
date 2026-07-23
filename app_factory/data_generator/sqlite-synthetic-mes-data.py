@@ -857,7 +857,22 @@ class MESSimulator:
                 ))
                 machine_id = result.inserted_primary_key[0]
                 machine_ids[(machine_name, machine_type, wc_name)] = machine_id
-        
+
+        # Guarantee at least one live breakdown so the demo always has an
+        # ongoing downtime event to show (status draw above is probabilistic)
+        breakdown_count = session.execute(
+            self.Machines.select().where(self.Machines.c.Status == 'breakdown')
+        ).fetchall()
+        if not breakdown_count:
+            all_machines = session.execute(self.Machines.select()).fetchall()
+            victim = random.choice(all_machines)
+            session.execute(
+                self.Machines.update()
+                .where(self.Machines.c.MachineID == victim.MachineID)
+                .values(Status='breakdown')
+            )
+            logger.info(f"Forced breakdown status on {victim.Name} for demo visibility")
+
         session.commit()
         return machine_ids
     

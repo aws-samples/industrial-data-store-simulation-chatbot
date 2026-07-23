@@ -105,6 +105,13 @@ def run_mes_chat():
     if 'mes_config' not in st.session_state:
         st.session_state.mes_config = AgentConfig()
 
+    # Handoff from the Production Meeting dashboard (Investigate buttons,
+    # follow-up suggestions): queue the question as if the user typed it
+    if st.session_state.get('switch_to_chat'):
+        handoff_query = st.session_state.pop('switch_to_chat')
+        st.session_state.mes_messages.append({"role": "user", "content": handoff_query})
+        st.session_state._process_query = handoff_query
+
     # ----- Sidebar ----- #
     with st.sidebar:
         st.subheader("⚙️ Settings")
