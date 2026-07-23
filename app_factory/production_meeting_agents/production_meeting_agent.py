@@ -57,7 +57,7 @@ _SPECIALISTS = {
     },
     'equipment': {
         'domain': 'Equipment',
-        'focus': 'OEE metrics (Availability, Performance, Quality), machine status, downtime analysis, and maintenance needs.',
+        'focus': 'OEE metrics (Availability, Performance, Quality), machine status, downtime analysis, and maintenance needs. Downtimes rows with EndTime NULL are ongoing events (Duration is NULL until resolved).',
         'tables': 'Machines, OEE, Downtimes tables',
     },
     'inventory': {

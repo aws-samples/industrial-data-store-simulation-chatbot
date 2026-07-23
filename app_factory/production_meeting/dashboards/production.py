@@ -887,13 +887,17 @@ def display_bottlenecks_and_issues():
         # Get top downtime events from today and yesterday
         one_day_ago = days_ago(1)
 
+        # Ongoing downtime (EndTime NULL) has no Duration yet - use elapsed
+        # minutes so machines currently down appear at the top of the list
         downtime_query = """
         SELECT
             m.Name as MachineName,
             m.Type as MachineType,
             d.Reason as DowntimeReason,
             d.Category as DowntimeCategory,
-            d.Duration as DurationMinutes,
+            COALESCE(d.Duration,
+                     (strftime('%s', 'now') - strftime('%s', d.StartTime)) / 60) as DurationMinutes,
+            CASE WHEN d.EndTime IS NULL THEN 1 ELSE 0 END as IsOngoing,
             d.Description
         FROM
             Downtimes d
@@ -902,7 +906,7 @@ def display_bottlenecks_and_issues():
         WHERE
             d.StartTime >= :one_day_ago
         ORDER BY
-            d.Duration DESC
+            DurationMinutes DESC
         LIMIT 5
         """
 
@@ -940,10 +944,11 @@ def display_bottlenecks_and_issues():
             
             for i, row in downtime_df.iterrows():
                 downtime_color = "blue" if row['DowntimeCategory'] == 'planned' else "red"
-                
+                ongoing_label = " — ONGOING" if row.get('IsOngoing') else ""
+
                 st.markdown(f"""
-                **{row['MachineName']} ({row['MachineType']})**: <span style='color:{downtime_color}'>{row['DurationMinutes']} minutes</span>  
-                Reason: {row['DowntimeReason']} ({row['DowntimeCategory']})  
+                **{row['MachineName']} ({row['MachineType']})**: <span style='color:{downtime_color}'>{int(row['DurationMinutes'])} minutes{ongoing_label}</span>
+                Reason: {row['DowntimeReason']} ({row['DowntimeCategory']})
                 Description: {row['Description']}
                 """, unsafe_allow_html=True)
                 st.markdown("---")
@@ -960,7 +965,8 @@ def display_bottlenecks_and_issues():
         d.Reason as DowntimeReason,
         d.Category as DowntimeCategory,
         COUNT(d.DowntimeID) as OccurrenceCount,
-        SUM(d.Duration) as TotalMinutes
+        SUM(COALESCE(d.Duration,
+                     (strftime('%s', 'now') - strftime('%s', d.StartTime)) / 60)) as TotalMinutes
     FROM
         Downtimes d
     WHERE

@@ -76,7 +76,8 @@ def get_top_issues():
     # Equipment with most downtime
     equipment_query = """
         SELECT m.Name, m.Type, COUNT(d.DowntimeID) as downtime_events,
-               SUM(d.Duration) as total_downtime_mins
+               SUM(COALESCE(d.Duration,
+                            (strftime('%s', 'now') - strftime('%s', d.StartTime)) / 60)) as total_downtime_mins
         FROM Machines m
         JOIN Downtimes d ON m.MachineID = d.MachineID
         WHERE d.StartTime >= :seven_days_ago
