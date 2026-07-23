@@ -227,8 +227,8 @@ def _create_plotly_visualization(df: pd.DataFrame, chart_spec: Dict[str, Any]) -
                     y=value_counts.values,
                     title=f"Count of {chart_spec['x']}"
                 )
-                fig.update_xaxis(title=chart_spec['x'])
-                fig.update_yaxis(title='Count')
+                fig.update_xaxes(title_text=chart_spec['x'])
+                fig.update_yaxes(title_text='Count')
             else:
                 fig = px.bar(
                     df,

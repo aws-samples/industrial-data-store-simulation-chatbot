@@ -1,21 +1,18 @@
-"""
-MES Agents module for Strands-based manufacturing analysis.
+"""MES Agents package — Strands Agents SDK powered manufacturing analysis."""
 
-This module provides intelligent agents and tools for comprehensive
-manufacturing execution system (MES) data analysis using the Strands SDK.
-"""
-
-from .agent_manager import MESAgentManager
-from .config import AgentConfig, default_config
+from .config import AgentConfig, default_config, SUPPORTED_MODELS, MODEL_DISPLAY_NAMES
+from .mes_analysis_agent import create_agent
 from .tools import run_sqlite_query, get_database_schema, create_intelligent_visualization
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 __all__ = [
-    "MESAgentManager",
-    "AgentConfig", 
+    "AgentConfig",
     "default_config",
+    "create_agent",
+    "SUPPORTED_MODELS",
+    "MODEL_DISPLAY_NAMES",
     "run_sqlite_query",
     "get_database_schema",
-    "create_intelligent_visualization"
+    "create_intelligent_visualization",
 ]

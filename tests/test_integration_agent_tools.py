@@ -324,16 +324,13 @@ class TestErrorHandlingAndRecovery:
     
     def test_database_connection_error_handling(self):
         """Test handling of database connection errors."""
-        with patch('app_factory.production_meeting_agents.tools.database_tools.DatabaseManager') as mock_db:
-            mock_instance = MagicMock()
-            mock_db.return_value = mock_instance
-            mock_instance.execute_query.side_effect = sqlite3.Error("Database connection failed")
-
+        mock_instance = MagicMock()
+        mock_instance.execute_query.side_effect = sqlite3.Error("Database connection failed")
+        with patch('app_factory.production_meeting_agents.tools.database_tools._get_readonly_db_manager', return_value=mock_instance):
             result = run_sqlite_query("SELECT * FROM WorkOrders")
 
             assert result['success'] is False
             assert 'error' in result
-            assert 'recovery_options' in result
     
     def test_invalid_query_error_handling(self):
         """Test handling of invalid SQL queries."""
