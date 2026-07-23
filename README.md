@@ -40,16 +40,13 @@ Key benefits:
   - Inventory: "Which materials are below reorder level?"
 
 Features:
+- **AI Daily Briefing** - Structured executive summary with plant-status banner, severity-colored findings, and one-click "Investigate" handoff to MES Chat
+- **AI Insights** - Cached overnight analysis plus live follow-up questions with streaming tool-call visibility
 - **Production Summary** - KPIs, completion rates, work orders
 - **Equipment Status** - Machine availability, maintenance, downtime
 - **Quality Issues** - Defect rates, top issues, problem products
 - **Inventory Alerts** - Items below reorder level, days of supply
-- **Productivity** - Employee and shift performance
 - **Root Cause Analysis** - Defect analysis tools
-- **AI Insights** - Daily cached analysis for fast loading
-- **Action Items** - Track action items
-- **Meeting Notes** - Document discussions
-- **Reports** - Meeting summaries and weekly reports
 
 ### System Architecture
 
@@ -61,73 +58,50 @@ Sequence diagram:
 sequenceDiagram
     participant User as 👤 User
     participant UI as 🖥️ Streamlit UI
-    participant Manager as 🤖 MES Agent Manager
-    participant Agent as 🧠 MES Analysis Agent
+    participant Agent as 🧠 MES Analysis Agent (per session)
     participant Tools as 🔧 Agent Tools
-    participant DB as 🗄️ SQLite Database (MES)
-    participant LLM as ☁️ AWS Bedrock (Claude)
+    participant DB as 🗄️ SQLite Database (read-only)
+    participant LLM as ☁️ Amazon Bedrock (Claude)
 
     Note over User, LLM: MES Chatbot Interaction Flow
 
     %% Initial Setup
     User->>UI: Launch MES Chat Application
-    UI->>Manager: Initialize MES Agent Manager
-    Manager->>Agent: Create MES Analysis Agent
+    UI->>Agent: Create per-session agent (st.session_state)
     Agent->>LLM: Initialize with system prompt & tools
-    Agent-->>Manager: Agent ready
-    Manager-->>UI: Agent manager ready
     UI-->>User: Display chat interface
 
-    %% User Query Processing
+    %% User Query Processing (streaming)
     User->>UI: Enter manufacturing query
-    UI->>Manager: process_query(query, context)
-    Manager->>Agent: analyze(query, context)
-    
-    %% Agent Analysis Process
-    Agent->>LLM: Send query with system prompt
-    
+    UI->>Agent: stream_async(query)
+
     Note over Agent, LLM: Agent uses specialized MES system prompt<br/>with manufacturing domain expertise
-    
+
     LLM->>Tools: get_database_schema()
     Tools->>DB: PRAGMA table_info, sample data
     DB-->>Tools: Schema information
     Tools-->>LLM: Database structure & sample data
-    
+
     LLM->>Tools: run_sqlite_query(sql_query)
+    Note over Tools, DB: SQL validated (SELECT-only) and executed<br/>on a read-only connection
     Tools->>DB: Execute SQL query
     DB-->>Tools: Query results
     Tools-->>LLM: Formatted results with metadata
-    
+
     opt Visualization Needed
         LLM->>Tools: create_intelligent_visualization(data)
-        Tools-->>LLM: Chart/graph data
+        Tools-->>LLM: Plotly chart JSON
     end
-    
-    LLM-->>Agent: Analysis response with insights
-    Agent-->>Manager: Formatted response with metadata
-    Manager-->>UI: Complete analysis result
-    
-    %% UI Display
-    UI->>UI: Display analysis with formatting
-    UI->>UI: Show progress updates
-    UI->>UI: Generate follow-up suggestions
-    UI-->>User: Present comprehensive results
+
+    LLM--)UI: Streamed response text + tool-call events
+    UI-->>User: Live tool-call status, then analysis + charts
 
     %% Error Handling Flow
     alt Database Error
         DB-->>Tools: SQLite error
-        Tools->>Tools: Analyze error with IntelligentErrorAnalyzer
         Tools-->>LLM: Error analysis with recovery suggestions
-        LLM-->>Agent: Error response with guidance
-        Agent-->>Manager: Error result with alternatives
-        Manager-->>UI: Error response with suggestions
+        LLM--)UI: Error response with guidance
         UI-->>User: Display error with recovery options
-    end
-
-    %% Follow-up Interaction
-    opt User Selects Follow-up
-        User->>UI: Click suggested follow-up question
-        Note over UI, LLM: Process repeats with new query
     end
 
 ```
@@ -285,39 +259,38 @@ Use `--lookback` and `--lookahead` options to control date ranges when generatin
 ├── app_factory/                 # Main application code
 │   ├── main.py                  # Combined application entry point
 │   ├── shared/                  # Shared utilities
-│   │   ├── database.py          # Database access
-│   │   └── bedrock_utils.py     # Amazon Bedrock client (for classic chat)
+│   │   ├── database.py          # Database access (read-only mode for agents)
+│   │   ├── sql_safety.py        # Read-only SQL validation
+│   │   ├── db_utils.py          # Date helpers for parameterized queries
+│   │   └── bedrock_utils.py     # Amazon Bedrock client helpers
 │   ├── mes_chat/                # MES Chat application
-│   │   └── chat_interface.py    # AI agent-powered chat interface
+│   │   └── chat_interface.py    # Streaming agent chat interface
 │   ├── mes_agents/              # MES Chat AI Agents
-│   │   ├── mes_analysis_agent.py    # Main analysis agent
-│   │   ├── agent_manager.py         # Agent lifecycle management
+│   │   ├── mes_analysis_agent.py    # Agent factory (per-session agents)
 │   │   ├── error_handling.py        # Error recovery
-│   │   ├── config.py                # Agent configuration
+│   │   ├── config.py                # Agent configuration & model catalog
 │   │   └── tools/                   # Agent tools
-│   │       ├── database_tools.py    # SQLite access
+│   │       ├── database_tools.py    # Read-only SQLite access
 │   │       └── visualization_tools.py # Visualization tools
 │   ├── production_meeting_agents/   # Production Meeting AI Agents
-│   │   ├── production_meeting_agent.py  # Orchestrator + specialized agents
+│   │   ├── production_meeting_agent.py  # Orchestrator, specialists, structured executive summary
 │   │   ├── agent_manager.py         # Agent lifecycle management
 │   │   ├── error_handling.py        # Error recovery
 │   │   ├── config.py                # Agent configuration
 │   │   └── tools/                   # Agent tools
-│   │       ├── database_tools.py    # SQLite access
+│   │       ├── database_tools.py    # Read-only SQLite access
 │   │       └── visualization_tools.py # Visualization tools
 │   ├── production_meeting/      # Production Meeting application
-│   │   ├── dashboard.py         # Main dashboard
+│   │   ├── dashboard.py         # Main dashboard + AI Daily Briefing card
 │   │   ├── dashboards/          # Individual dashboard components
 │   │   │   ├── equipment.py     # Equipment status dashboard
 │   │   │   ├── inventory.py     # Inventory dashboard
 │   │   │   ├── production.py    # Production metrics dashboard
-│   │   │   ├── productivity.py  # Productivity dashboard
 │   │   │   ├── quality.py       # Quality issues dashboard
 │   │   │   ├── root_cause.py    # Root cause analysis
-│   │   │   └── weekly.py        # Weekly summary dashboard
-│   │   ├── action_tracker.py    # Action item management
-│   │   ├── report.py            # Meeting report generation
-│   │   ├── ai_insights.py       # AI-powered insights
+│   │   │   ├── db_cache.py      # Shared cached DB access for tabs
+│   │   │   └── color_config.py  # Chart color configuration
+│   │   ├── ai_insights.py       # AI Insights tab (cached + live streaming)
 │   │   ├── daily_analysis_scheduler.py  # Daily analysis automation
 │   │   └── analysis_cache_manager.py    # Analysis cache management
 │   ├── data_generator/          # Database generator
@@ -361,20 +334,18 @@ Example queries:
 
 ### Daily Production Meeting
 
-The Production Meeting dashboard includes:
+The Production Meeting dashboard opens with the **AI Daily Briefing**: a plant-status banner and severity-colored findings generated overnight by the agent system (structured output — no free-text parsing). Each finding has an **Investigate** button that hands off to MES Chat with a pre-filled follow-up question.
 
-1. **Production Summary** - Completion rates, OEE, work order status
-2. **Equipment Status** - Machine availability, downtime, maintenance schedule
-3. **Quality Issues** - Defects, problem products, root causes, trends
-4. **Inventory Alerts** - Shortages, days of supply, material requirements
-5. **Productivity** - Employee and shift performance
+Tabs:
+
+1. **AI Insights** - Cached overnight analysis per domain, plus live follow-up questions answered by the orchestrator agent with streaming tool-call visibility
+2. **Production Summary** - Completion rates, OEE, work order status
+3. **Equipment Status** - Machine availability, downtime (including ongoing events), maintenance schedule
+4. **Quality Issues** - Defects, problem products, root causes, trends
+5. **Inventory Alerts** - Shortages, days of supply, material requirements
 6. **Root Cause Analysis** - Drill into quality issues and patterns
-7. **AI Insights** - Cached daily analysis with on-demand queries
-8. **Action Items** - Track and assign action items
-9. **Meeting Notes** - Document discussions and decisions
-10. **Reports** - Meeting summaries and weekly reports
 
-**Performance**: The AI Insights tab uses daily cached analysis for sub-second loading. Run `make run-analysis` to pre-generate insights, or use real-time analysis on demand.
+**Performance**: The AI Insights tab uses daily cached analysis for sub-second loading. Run `make run-analysis` to pre-generate insights, or use live analysis on demand.
 
 ![daily-lean-meetings](assets/ProductionDashboard.gif)
 
@@ -382,11 +353,20 @@ The Production Meeting dashboard includes:
 
 This application uses Amazon Bedrock for AI capabilities.
 
-### Default Model
+### Default Models
 
-The application uses **Claude Haiku 4.5** (`us.anthropic.claude-haiku-4-5-20251001-v1:0`) via Amazon Bedrock cross-region inference. Configure in:
-- `app_factory/mes_agents/config.py`
-- `app_factory/production_meeting_agents/config.py`
+Both defaults use Amazon Bedrock cross-region (geo) inference profiles:
+
+| Component | Model | Inference Profile ID | Why |
+|---|---|---|---|
+| MES Insight Chat | Claude Haiku 4.5 | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Low latency for interactive chat |
+| Production Meeting agents (daily briefing, executive summary) | Claude Sonnet 5 | `us.anthropic.claude-sonnet-5` | Higher analysis quality for the flagship daily briefing |
+
+Configure in:
+- `app_factory/mes_agents/config.py` (MES Chat; Sonnet 5 also selectable in the UI model picker)
+- `app_factory/production_meeting_agents/config.py` (Production Meeting agents)
+
+Both models must be enabled in the Bedrock model access console for your account/region.
 
 ### IAM Permissions
 
@@ -410,7 +390,7 @@ Your AWS role needs these permissions:
 }
 ```
 
-Note: Narrow the Resource scope based on your deployment environment.
+Note: Narrow the Resource scope based on your deployment environment. When scoping, cross-region inference profiles require access to both the inference profile ARN and the underlying foundation model ARNs in each region of the profile.
 
 ## License
 

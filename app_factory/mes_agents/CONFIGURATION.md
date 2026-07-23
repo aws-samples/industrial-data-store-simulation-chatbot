@@ -1,69 +1,54 @@
 # MES Agents Configuration
 
-Simple configuration guide for the MES Agents demo.
+Configuration for the MES Chat agents lives in `config.py`.
 
-## Basic Configuration
-
-The agents use default settings that work out of the box. Configuration is handled in `config.py`:
+## AgentConfig
 
 ```python
-from mes_agents.config import AgentConfig
+from app_factory.mes_agents.config import AgentConfig
 
-# Use defaults (recommended for demo)
+# Defaults (recommended for the demo)
 config = AgentConfig()
 
-# Or customize settings
+# Or customize
 config = AgentConfig(
-    timeout_seconds=60,           # How long to wait for analysis
-    analysis_depth="standard",    # quick, standard, or comprehensive
-    max_query_steps=5,           # Maximum reasoning steps
-    enable_progress_updates=True  # Show progress in UI
+    default_model='us.anthropic.claude-sonnet-5',  # any entry from SUPPORTED_MODELS
+    timeout_seconds=120,          # max time for one analysis
+    max_tokens=4096,              # response token cap
+    analysis_depth='standard',    # 'standard' or 'comprehensive'
 )
 ```
 
 ## Available Models
 
-The system supports multiple Bedrock models. Default is Claude 4.5 Haiku for optimal performance:
-- Claude 4.5 Haiku (Recommended - fast and efficient)
-- Claude 4 Sonnet (Advanced analysis)
-- Claude 3.7 Sonnet (Advanced analysis)
-- Amazon Nova models (Pro, Lite)
-- Other Bedrock models with tool support
+All entries are Bedrock cross-region (geo) inference profiles (see `SUPPORTED_MODELS` in `config.py`):
 
-## Agent Settings
+| Inference Profile ID | Notes |
+|---|---|
+| `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Default — fast, best for interactive chat |
+| `us.anthropic.claude-sonnet-5` | Advanced analysis |
+| `us.anthropic.claude-sonnet-4-20250514-v1:0` | Advanced analysis |
+| `us.amazon.nova-lite-v1:0` | Fast |
+| `us.amazon.nova-pro-v1:0` | Balanced |
 
-### Analysis Depth
-- **standard**: Clear answers with key context and metrics (default)
-- **comprehensive**: Full analysis with insights, recommendations, and visualizations
+The model is also selectable at runtime in the chat sidebar. Models must be enabled in the Bedrock model access console for your account/region.
 
-### Timeout Settings
-- **timeout_seconds**: Maximum time for analysis (default: 120)
-- **max_query_steps**: Maximum reasoning steps (default: 5)
+## AWS Environment
 
-### UI Features
-- **enable_progress_updates**: Show real-time progress (default: True)
-- **show_technical_details**: Display technical error info (default: False)
-
-## Environment Variables
-
-Set these in your `.env` file:
+Set in `.env`:
 
 ```bash
 AWS_REGION=us-east-1
 AWS_PROFILE=your-profile
 ```
 
+## Safety
+
+Agent database access is read-only: SQL is validated as SELECT-only (`shared/sql_safety.py`) and executed on a read-only SQLite connection (`shared/database.py` with `read_only=True`).
+
 ## Demo Limitations
 
-This is a proof-of-concept with:
-- Single agent type (MES Analysis Agent)
+This is a proof-of-concept:
 - SQLite database only
 - Basic error recovery
-- Simplified configuration options
-
-For production use, you would extend:
-- Multiple specialized agents
-- Database connection pooling
-- Advanced error recovery
-- User-specific configurations
-- Performance monitoring
+- Per-session agents (no persistence across browser sessions)
