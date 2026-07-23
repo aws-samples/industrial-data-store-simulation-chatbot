@@ -8,11 +8,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-from app_factory.shared.database import DatabaseManager
+from .db_cache import get_shared_db_manager, cached_query
 from app_factory.shared.db_utils import days_ago, today, date_diff_days
 
 # Initialize database manager
-db_manager = DatabaseManager()
+db_manager = get_shared_db_manager()
 
 # Import shared color configuration
 from .color_config import (

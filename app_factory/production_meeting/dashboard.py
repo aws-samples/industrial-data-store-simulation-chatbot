@@ -5,11 +5,6 @@ Production Meeting Dashboard - Daily lean meeting tool with AI-first analytics
 import streamlit as st
 from datetime import datetime, timedelta
 
-# Import shared modules
-import sys
-import os
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(parent_dir)
 from app_factory.shared.database import DatabaseManager
 from app_factory.shared.db_utils import days_ago
 
@@ -29,13 +24,25 @@ from .ai_insights import (
 )
 from .analysis_cache_manager import AnalysisCacheManager
 
-# Initialize managers
-db_manager = DatabaseManager()
-cache_manager = AnalysisCacheManager()
+
+@st.cache_resource
+def _get_db_manager() -> DatabaseManager:
+    """Shared DatabaseManager instance across Streamlit reruns."""
+    return DatabaseManager()
 
 
+@st.cache_resource
+def _get_cache_manager() -> AnalysisCacheManager:
+    return AnalysisCacheManager()
+
+
+db_manager = _get_db_manager()
+cache_manager = _get_cache_manager()
+
+
+@st.cache_data(ttl=300)
 def get_top_issues():
-    """Query database for top issues to display in the AI summary card"""
+    """Query database for top issues to display in the AI summary card."""
     issues = []
 
     # Calculate dates for parameterized queries
@@ -343,7 +350,32 @@ def run_production_meeting():
 
     st.markdown("---")
 
-    # Simplified navigation tabs (removed Weekly, Productivity, Meeting Notes, Reports)
+    # Each tab body is a @st.fragment so widget interactions inside one tab
+    # don't trigger a full page rerun (which would re-execute all 6 tabs).
+    @st.fragment
+    def _production_tab():
+        production_summary_dashboard()
+
+    @st.fragment
+    def _equipment_tab():
+        equipment_status_dashboard()
+
+    @st.fragment
+    def _quality_tab():
+        quality_dashboard()
+
+    @st.fragment
+    def _inventory_tab():
+        inventory_dashboard()
+
+    @st.fragment
+    def _root_cause_tab():
+        add_root_cause_analysis()
+
+    @st.fragment
+    def _ask_ai_tab():
+        display_ask_ai_tab()
+
     tabs = st.tabs([
         "📈 Production",
         "🔧 Equipment",
@@ -353,29 +385,18 @@ def run_production_meeting():
         "🤖 Ask AI"
     ])
 
-    # Tab 1: Production Summary
     with tabs[0]:
-        production_summary_dashboard()
-
-    # Tab 2: Equipment Status
+        _production_tab()
     with tabs[1]:
-        equipment_status_dashboard()
-
-    # Tab 3: Quality Issues
+        _equipment_tab()
     with tabs[2]:
-        quality_dashboard()
-
-    # Tab 4: Inventory Alerts
+        _quality_tab()
     with tabs[3]:
-        inventory_dashboard()
-
-    # Tab 5: Root Cause Analysis
+        _inventory_tab()
     with tabs[4]:
-        add_root_cause_analysis()
-
-    # Tab 6: Ask AI (renamed from AI Insights)
+        _root_cause_tab()
     with tabs[5]:
-        display_ask_ai_tab()
+        _ask_ai_tab()
 
 
 def show_welcome_screen():
