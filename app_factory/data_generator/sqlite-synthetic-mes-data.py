@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import os
+import sys
 import logging
 from faker import Faker
 import random
@@ -2819,111 +2820,51 @@ def main():
         seed = args.seed
     
     try:
-        # Check if database already exists
         db_exists = os.path.exists(args.db)
-        
-        # Determine mode based on arguments and database existence
+
         if args.mode == 'auto':
-            # Auto-detect mode based on whether the database exists
             mode = 'refresh' if db_exists else 'create'
             logger.info(f"Auto-detected mode: {mode}")
         else:
             mode = args.mode
-        
-        # Handle create mode
-        if mode == 'create':
-            if db_exists:
-                logger.info(f"Database {args.db} exists but create mode specified. Removing existing database.")
-                os.remove(args.db)
-            
-            logger.info(f"Creating new database at {args.db}")
-            simulator = MESSimulator(
-                args.config, 
-                args.db, 
-                seed=seed,
-                lookback_days=args.lookback,
-                lookahead_days=args.lookahead
-            )
-            simulator.create_database()
-            simulator.insert_data()
-            logger.info(f"MES simulation database created successfully at {args.db}")
-            
-        # Handle refresh mode
-        elif mode == 'refresh':
-            if not db_exists:
-                logger.error(f"Cannot refresh: Database {args.db} does not exist. Use 'create' mode instead.")
-                sys.exit(1)
-            
-            logger.info(f"Refreshing data in existing database {args.db}")
-            
-            # Initialize the simulator without creating tables
-            simulator = MESSimulator(
-                args.config, 
-                args.db, 
-                seed=seed,
-                lookback_days=args.lookback,
-                lookahead_days=args.lookahead
-            )
-            
-            # Truncate all tables while preserving schema
-            truncate_all_tables(args.db)
-            
-            # Insert fresh data
-            simulator.insert_data()
-            logger.info(f"Data refreshed successfully in existing database {args.db}")
-            logger.info(f"Generated {args.lookback} days of historical data and {args.lookahead} days of future data")
-        
+
+        if mode == 'refresh' and not db_exists:
+            logger.error(f"Cannot refresh: Database {args.db} does not exist. Use 'create' mode instead.")
+            sys.exit(1)
+
+        # Both modes build a complete database at a temporary path, then swap
+        # it into place atomically. A live application (e.g. the Streamlit
+        # service) never observes a truncated or partially-populated database.
+        tmp_db = f"{args.db}.new"
+        if os.path.exists(tmp_db):
+            os.remove(tmp_db)
+
+        logger.info(f"Generating database at {tmp_db} (mode: {mode})")
+        simulator = MESSimulator(
+            args.config,
+            tmp_db,
+            seed=seed,
+            lookback_days=args.lookback,
+            lookahead_days=args.lookahead
+        )
+        simulator.create_database()
+        simulator.insert_data()
+
+        # Remove stale WAL sidecar files belonging to the old database, then
+        # atomically replace it. Readers with open connections keep their old
+        # snapshot; new connections see the fresh data.
+        for suffix in ('-wal', '-shm'):
+            sidecar = f"{args.db}{suffix}"
+            if os.path.exists(sidecar):
+                os.remove(sidecar)
+        os.replace(tmp_db, args.db)
+
+        logger.info(f"MES simulation database ready at {args.db}")
+        logger.info(f"Generated {args.lookback} days of historical data and {args.lookahead} days of future data")
+
     except Exception as e:
         logger.error(f"Error in MES data generation: {e}")
         raise
-
-
-def truncate_all_tables(db_path):
-    """Delete all data from tables but preserve schema."""
-    logger.info(f"Truncating all tables in {db_path}")
-    
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Get all tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = cursor.fetchall()
-        
-        # Disable foreign key checks temporarily
-        cursor.execute("PRAGMA foreign_keys = OFF;")
-        
-        # Start a transaction
-        conn.execute("BEGIN TRANSACTION;")
-        
-        # Truncate each table
-        for table in tables:
-            table_name = table[0]
-            if table_name != "sqlite_sequence":  # Skip internal SQLite tables
-                logger.info(f"Truncating table: {table_name}")
-                cursor.execute(f"DELETE FROM {table_name};")
-        
-        # Reset autoincrement counters if sqlite_sequence exists
-        try:
-            cursor.execute("DELETE FROM sqlite_sequence;")
-        except sqlite3.OperationalError as e:
-            if "no such table: sqlite_sequence" in str(e):
-                logger.info("No sqlite_sequence table found (normal if no autoincrement columns)")
-            else:
-                raise
-        
-        # Commit transaction
-        conn.commit()
-        
-        # Re-enable foreign key checks
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
-        conn.close()
-        logger.info("All tables truncated successfully")
-        return True
-    except Exception as e:
-        logger.error(f"Error truncating tables: {e}")
-        return False
 
 
 if __name__ == '__main__':

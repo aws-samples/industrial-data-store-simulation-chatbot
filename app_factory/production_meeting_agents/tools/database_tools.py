@@ -25,6 +25,7 @@ from functools import lru_cache
 from strands import tool
 from ..error_handling import IntelligentErrorAnalyzer, ErrorContext
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.sql_safety import validate_readonly_query
 from app_factory.shared.db_utils import (
     days_ago, days_ahead, today,
     date_range_start, date_range_end
@@ -37,6 +38,17 @@ logger = logging.getLogger(__name__)
 _schema_cache = None
 _schema_cache_time = None
 CACHE_DURATION = 300  # 5 minutes
+
+# Read-only manager for model-generated SQL; writes rejected at connection level.
+_readonly_db_manager: Optional[DatabaseManager] = None
+
+
+def _get_readonly_db_manager() -> DatabaseManager:
+    """Get or create the shared read-only database manager."""
+    global _readonly_db_manager
+    if _readonly_db_manager is None:
+        _readonly_db_manager = DatabaseManager(read_only=True)
+    return _readonly_db_manager
 
 
 @tool
@@ -65,14 +77,16 @@ def run_sqlite_query(query: str) -> Dict[str, Any]:
         if not validation_result['valid']:
             return _create_production_validation_error_response(query, validation_result)
 
-        # Performance optimization: Limit result size for meeting efficiency
+        # Performance optimization: Limit result size for meeting efficiency.
+        # Word-boundary match so identifiers containing "limit" don't suppress it.
         MAX_ROWS_FOR_MEETINGS = 1000
-        if 'LIMIT' not in query.upper():
-            query = f"{query.rstrip(';')} LIMIT {MAX_ROWS_FOR_MEETINGS}"
+        import re as _re
+        if not _re.search(r'\blimit\b', query, _re.IGNORECASE):
+            query = f"{query.rstrip().rstrip(';')} LIMIT {MAX_ROWS_FOR_MEETINGS}"
             logger.debug(f"Added LIMIT clause for meeting efficiency: {MAX_ROWS_FOR_MEETINGS} rows")
-        
-        # Use the shared database manager for consistency
-        db_manager = DatabaseManager()
+
+        # Read-only manager: model-generated SQL must not write
+        db_manager = _get_readonly_db_manager()
         result = db_manager.execute_query(query)
         
         if result['success']:
@@ -244,36 +258,14 @@ def _validate_production_query(query: str) -> Dict[str, Any]:
     Returns:
         Dictionary with validation results and production-specific suggestions
     """
-    validation_result = {'valid': True, 'warnings': [], 'suggestions': []}
-    
+    # Shared read-only validation (word-boundary matching, no false positives
+    # on identifiers like "LastUpdated")
+    validation_result = validate_readonly_query(query)
+    if not validation_result['valid']:
+        return validation_result
+
     query_lower = query.lower().strip()
-    
-    # Basic validation
-    if not query_lower:
-        validation_result['valid'] = False
-        validation_result['error'] = 'Query cannot be empty'
-        return validation_result
-    
-    # Check for dangerous operations
-    dangerous_keywords = ['drop', 'delete', 'truncate', 'alter', 'create', 'insert', 'update']
-    if any(keyword in query_lower for keyword in dangerous_keywords):
-        validation_result['valid'] = False
-        validation_result['error'] = 'Modifying operations are not allowed in production meetings. Use SELECT queries only.'
-        validation_result['suggestions'] = [
-            'Use SELECT statements to analyze production data',
-            'Focus on data retrieval for meeting insights'
-        ]
-        return validation_result
-    
-    # Production meeting specific validations
-    if not query_lower.startswith('select'):
-        validation_result['warnings'].append('Production meeting queries should use SELECT for data analysis')
-    
-    # Check for performance considerations in meeting context
-    if 'select *' in query_lower and 'limit' not in query_lower:
-        validation_result['warnings'].append('Consider using LIMIT for faster meeting responses')
-        validation_result['suggestions'].append('Add "LIMIT 100" for quicker results during meetings')
-    
+
     # Suggest production-relevant enhancements
     if 'workorders' in query_lower or 'work_orders' in query_lower:
         if 'date' not in query_lower and 'time' not in query_lower:
