@@ -169,7 +169,10 @@ cython_debug/
 
 #sqllite simulation database 
 mes.db
+mes.db.new
 *.db-journal
+*.db-wal
+*.db-shm
 
 #meeting notes
 app_factory/reports
