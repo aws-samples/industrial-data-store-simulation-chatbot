@@ -1,59 +1,49 @@
 # MES Agents - AI-Powered Manufacturing Analysis
 
-A demo implementation of intelligent agents for Manufacturing Execution System (MES) data analysis using the Strands SDK.
+Strands Agents SDK implementation powering the MES Insight Chat: a streaming, per-session agent for Manufacturing Execution System (MES) data analysis.
 
 ## Quick Start
 
-1. **Install Dependencies**
+1. **Install dependencies** (from the repo root)
+
    ```bash
-   uv add strands-sdk streamlit plotly pandas
+   make setup
    ```
 
-2. **Run the Demo**
+2. **Run the app**
+
    ```bash
-   uv run streamlit run app_factory/mes_chat/chat_interface.py
+   make start-dashboard   # combined app, pick "MES Insight Chat"
+   # or chat only:
+   make start-chat
    ```
 
-3. **Try Agent Chat**
-   - Click "🤖 MES Insight Chat - AI Agent Edition"
-   - Ask questions like: "Show me recent production data" or "What quality issues occurred this week?"
+3. **Try it** — ask questions like "Show me recent production data" or "What quality issues occurred this week?"
 
-## What's New
+## How It Works
 
-### 🤖 Intelligent Agents
-- **Smart Analysis**: Agents break down complex questions into logical steps
-- **Multi-Step Reasoning**: Handles queries requiring multiple database operations
-- **Domain Expertise**: Specialized knowledge for production, quality, equipment, and inventory
-- **Configurable Depth**: Choose quick answers, standard responses, or comprehensive analysis
-
-### 🛠️ Enhanced Error Handling
-- **Smart Recovery**: Automatic error diagnosis and correction suggestions
-- **Partial Results**: Shows progress even when operations timeout
-- **Educational Tips**: Learn better ways to ask questions
-
-### 📊 Better Visualizations
-- **AI-Selected Charts**: Agents choose the best visualization for your data
-- **Fallback Options**: Always get results, even if charts fail
-- **Interactive Elements**: Click suggestions to explore further
+- `create_agent(config)` in `mes_analysis_agent.py` builds a Strands `Agent` with a manufacturing-domain system prompt, `BedrockModel`, and `SlidingWindowConversationManager`.
+- The chat UI creates **one agent per Streamlit session** (stored in `st.session_state`) — no context bleed between users.
+- Responses stream via `agent.stream_async()`; the UI shows each tool call live.
+- Database access is **read-only**: SELECT-only SQL validation plus a read-only SQLite connection.
 
 ## Key Features
 
-- **Natural Language**: Ask questions in plain English
-- **Progress Tracking**: See what the agent is doing in real-time
-- **Error Recovery**: Intelligent handling of database and system errors
-- **Educational**: Learn better query techniques as you use the system
+- **Natural language**: Ask questions in plain English
+- **Multi-step reasoning**: Queries requiring several database operations
+- **Live tool visibility**: See schema lookups, SQL queries, and chart generation as they happen
+- **Visualizations**: The agent picks appropriate Plotly charts and renders them inline
 
 ## Architecture
 
 ```
 mes_agents/
-├── mes_analysis_agent.py    # Main intelligent agent
-├── agent_manager.py         # Agent lifecycle management
-├── error_handling.py        # Smart error recovery
-├── config.py               # Agent configuration
-└── tools/                  # Agent tools
-    ├── database_tools.py   # SQLite database access
-    └── visualization_tools.py # Chart generation
+├── mes_analysis_agent.py   # Agent factory (create_agent)
+├── error_handling.py       # Error recovery
+├── config.py               # AgentConfig + SUPPORTED_MODELS catalog
+└── tools/                  # Agent tools (@tool decorated)
+    ├── database_tools.py   # Read-only SQLite access + schema
+    └── visualization_tools.py # Plotly chart generation
 ```
 
 ## Example Queries
@@ -63,19 +53,15 @@ mes_agents/
 - "Which machines have the most downtime?"
 - "What inventory items are running low?"
 
+## Configuration
+
+See [CONFIGURATION.md](CONFIGURATION.md). Default model: Claude Haiku 4.5 (fast); Claude Sonnet 5 available in the sidebar picker.
+
 ## Demo Limitations
 
 This is a proof-of-concept demo with:
 - SQLite database (not production-scale)
 - Simulated manufacturing data
-- Basic agent implementations
 - Limited to manufacturing domain
 
-## Next Steps
-
-For production use, consider:
-- Real database integration (PostgreSQL, SQL Server)
-- Advanced agent specialization
-- User authentication and permissions
-- Performance optimization
-- Extended domain coverage
+For production use, consider real database integration (PostgreSQL, SQL Server), authentication and permissions, and performance optimization.
