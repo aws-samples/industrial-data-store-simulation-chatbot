@@ -1532,8 +1532,8 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "sqlalchemy", specifier = ">=2.0.36" },
-    { name = "strands-agents", specifier = ">=1.0" },
-    { name = "streamlit", specifier = ">=1.51.0" },
+    { name = "strands-agents", specifier = ">=1.48" },
+    { name = "streamlit", specifier = ">=1.60.0" },
 ]
 provides-extras = ["dev"]
 

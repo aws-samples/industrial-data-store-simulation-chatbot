@@ -44,6 +44,22 @@ from app_factory.production_meeting_agents.config import ProductionMeetingConfig
 from app_factory.production_meeting_agents.error_handling import ProductionMeetingError
 
 
+def _mock_agent_returning(mock_agent_class, text):
+    """Configure the mocked Agent class so str(agent(query)) == text.
+
+    Agents are cached at module level, so clear the cache first to force
+    re-creation with the mocked class.
+    """
+    from app_factory.production_meeting_agents import production_meeting_agent as pma
+    pma.reset_agents()
+    mock_agent = MagicMock()
+    mock_agent_class.return_value = mock_agent
+    mock_response = MagicMock()
+    mock_response.__str__ = MagicMock(return_value=text)
+    mock_agent.return_value = mock_response
+    return mock_agent
+
+
 class TestAgentToolFunctionality:
     """Test individual agent tool functionality and database integration."""
     
@@ -207,53 +223,56 @@ class TestAgentToolFunctionality:
     @patch('app_factory.production_meeting_agents.production_meeting_agent.Agent')
     def test_production_analysis_tool(self, mock_agent_class):
         """Test production analysis tool functionality."""
-        # Mock the Agent class and its response
-        mock_agent = MagicMock()
-        mock_agent_class.return_value = mock_agent
-        mock_agent.return_value = MagicMock(content="Production analysis complete: 95% completion rate, bottleneck identified in work center 2")
-        
+        mock_agent = _mock_agent_returning(
+            mock_agent_class,
+            "Production analysis complete: 95% completion rate, bottleneck identified in work center 2",
+        )
+
         result = production_analysis_tool("What are today's production bottlenecks?")
-        
+
         assert isinstance(result, str)
         assert "production" in result.lower()
         mock_agent_class.assert_called_once()
         mock_agent.assert_called_once()
-    
+
     @patch('app_factory.production_meeting_agents.production_meeting_agent.Agent')
     def test_quality_analysis_tool(self, mock_agent_class):
         """Test quality analysis tool functionality."""
-        mock_agent = MagicMock()
-        mock_agent_class.return_value = mock_agent
-        mock_agent.return_value = MagicMock(content="Quality analysis: 8% defect rate detected in product line B, immediate corrective action required")
-        
+        _mock_agent_returning(
+            mock_agent_class,
+            "Quality analysis: 8% defect rate detected in product line B, immediate corrective action required",
+        )
+
         result = quality_analysis_tool("What quality issues need attention?")
-        
+
         assert isinstance(result, str)
         assert "quality" in result.lower()
         mock_agent_class.assert_called_once()
-    
+
     @patch('app_factory.production_meeting_agents.production_meeting_agent.Agent')
     def test_equipment_analysis_tool(self, mock_agent_class):
         """Test equipment analysis tool functionality."""
-        mock_agent = MagicMock()
-        mock_agent_class.return_value = mock_agent
-        mock_agent.return_value = MagicMock(content="Equipment analysis: CNC-002 requires maintenance, PRESS-001 breakdown affecting production")
-        
+        _mock_agent_returning(
+            mock_agent_class,
+            "Equipment analysis: CNC-002 requires maintenance, PRESS-001 breakdown affecting production",
+        )
+
         result = equipment_analysis_tool("Which equipment needs maintenance?")
-        
+
         assert isinstance(result, str)
         assert "equipment" in result.lower()
         mock_agent_class.assert_called_once()
-    
+
     @patch('app_factory.production_meeting_agents.production_meeting_agent.Agent')
     def test_inventory_analysis_tool(self, mock_agent_class):
         """Test inventory analysis tool functionality."""
-        mock_agent = MagicMock()
-        mock_agent_class.return_value = mock_agent
-        mock_agent.return_value = MagicMock(content="Inventory analysis: Steel Plate below reorder level, Copper Wire critically low")
-        
+        _mock_agent_returning(
+            mock_agent_class,
+            "Inventory analysis: Steel Plate below reorder level, Copper Wire critically low",
+        )
+
         result = inventory_analysis_tool("What inventory shortages should I know about?")
-        
+
         assert isinstance(result, str)
         assert "inventory" in result.lower()
         mock_agent_class.assert_called_once()
@@ -265,55 +284,52 @@ class TestQueryRoutingAndCoordination:
     @patch('app_factory.production_meeting_agents.production_meeting_agent.Agent')
     def test_single_domain_query_routing(self, mock_agent_class):
         """Test that single-domain queries are routed correctly."""
-        mock_agent = MagicMock()
-        mock_agent_class.return_value = mock_agent
-        mock_agent.return_value = MagicMock(content="Single domain analysis complete")
-        
+        _mock_agent_returning(mock_agent_class, "Single domain analysis complete")
+
         # Test production-specific query
         result = production_meeting_analysis_tool("What is our production efficiency today?")
         assert isinstance(result, str)
-        
+
         # Test quality-specific query
         result = production_meeting_analysis_tool("Show me quality control results")
         assert isinstance(result, str)
-        
+
         # Test equipment-specific query
         result = production_meeting_analysis_tool("Which machines are down for maintenance?")
         assert isinstance(result, str)
-        
+
         # Test inventory-specific query
         result = production_meeting_analysis_tool("What materials are running low?")
         assert isinstance(result, str)
-    
+
     @patch('app_factory.production_meeting_agents.production_meeting_agent.Agent')
     def test_multi_domain_query_coordination(self, mock_agent_class):
         """Test coordination of multiple agents for complex queries."""
-        mock_agent = MagicMock()
-        mock_agent_class.return_value = mock_agent
-        mock_agent.return_value = MagicMock(content="Multi-domain analysis: Production issues correlate with equipment downtime and quality problems")
-        
+        _mock_agent_returning(
+            mock_agent_class,
+            "Multi-domain analysis: Production issues correlate with equipment downtime and quality problems",
+        )
+
         # Test multi-domain query
         result = production_meeting_analysis_tool("Give me a comprehensive daily briefing covering all areas")
-        
+
         assert isinstance(result, str)
         assert len(result) > 0
         mock_agent_class.assert_called()
-    
+
     @patch('app_factory.production_meeting_agents.production_meeting_agent.Agent')
     def test_daily_briefing_generation(self, mock_agent_class):
         """Test daily briefing generation using multiple specialized tools."""
-        mock_agent = MagicMock()
-        mock_agent_class.return_value = mock_agent
-        mock_agent.return_value = MagicMock(content="""
+        _mock_agent_returning(mock_agent_class, """
         Daily Production Briefing:
         - Production: 95% completion rate
         - Quality: 2 issues requiring attention
         - Equipment: 1 machine in maintenance
         - Inventory: 3 items below reorder level
         """)
-        
+
         result = production_meeting_analysis_tool("Generate a daily production briefing")
-        
+
         assert isinstance(result, str)
         assert "production" in result.lower()
         assert "briefing" in result.lower()
@@ -350,25 +366,29 @@ class TestErrorHandlingAndRecovery:
     @patch('app_factory.production_meeting_agents.production_meeting_agent.Agent')
     def test_agent_timeout_handling(self, mock_agent_class):
         """Test handling of agent execution timeouts."""
+        from app_factory.production_meeting_agents import production_meeting_agent as pma
+        pma.reset_agents()
         mock_agent = MagicMock()
         mock_agent_class.return_value = mock_agent
         mock_agent.side_effect = TimeoutError("Agent execution timed out")
-        
+
         result = production_analysis_tool("Complex production analysis query")
-        
+
         assert isinstance(result, str)
-        assert "error" in result.lower() or "issue" in result.lower()
-    
+        assert "unavailable" in result.lower() or "error" in result.lower()
+
     @patch('app_factory.production_meeting_agents.production_meeting_agent.Agent')
     def test_agent_model_error_handling(self, mock_agent_class):
         """Test handling of model/API errors."""
+        from app_factory.production_meeting_agents import production_meeting_agent as pma
+        pma.reset_agents()
         mock_agent_class.side_effect = Exception("Model API error")
 
         result = production_analysis_tool("Test query")
 
         assert isinstance(result, str)
         # Error message should indicate an issue occurred during production analysis
-        assert "encountered an issue" in result.lower() or "production" in result.lower()
+        assert "unavailable" in result.lower() or "production" in result.lower()
     
     def test_graceful_degradation_scenarios(self):
         """Test graceful degradation when agents are unavailable."""

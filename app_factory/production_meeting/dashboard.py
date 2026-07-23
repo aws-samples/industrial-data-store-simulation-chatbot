@@ -216,17 +216,18 @@ def display_ai_summary_card():
 
                 # Prefer the dedicated executive_summary if available
                 if 'executive_summary' in analyses:
-                    raw_summary = analyses['executive_summary'].get('analysis', '')
+                    exec_entry = analyses['executive_summary']
+                    raw_summary = exec_entry.get('analysis', '')
                     if raw_summary:
-                        # Extract only the actionable bullet points
-                        exec_summary = extract_actionable_summary(raw_summary)
-                        if exec_summary:
-                            # Remove emojis for professional appearance
-                            clean_summary = remove_status_emojis(exec_summary)
-                            st.markdown(clean_summary)
-                        else:
-                            # Fallback to raw if extraction fails
+                        if exec_entry.get('structured'):
+                            # Structured output — already clean, render directly
                             st.markdown(raw_summary)
+                        else:
+                            # Legacy free-text cache: extract bullets + strip emojis
+                            exec_summary = extract_actionable_summary(raw_summary)
+                            st.markdown(
+                                remove_status_emojis(exec_summary) if exec_summary else raw_summary
+                            )
                     else:
                         st.info("Executive summary not available. Run daily analysis to generate.")
                 else:
