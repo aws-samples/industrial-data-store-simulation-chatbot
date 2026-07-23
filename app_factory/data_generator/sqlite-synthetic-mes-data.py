@@ -8,8 +8,8 @@ import random
 from datetime import datetime, timedelta
 import argparse
 from sqlalchemy import (
-    create_engine, MetaData, Table, Column, Integer, String, 
-    Float, ForeignKey, CheckConstraint, DateTime, Boolean, Text
+    create_engine, MetaData, Table, Column, Integer, String,
+    Float, ForeignKey, CheckConstraint, DateTime, Boolean, Text, text
 )
 from sqlalchemy.orm import sessionmaker
 
@@ -358,7 +358,11 @@ class MESSimulator:
             machine_ids = self.insert_machines(session, work_center_ids)
             shift_ids = self.insert_shifts(session)
             employee_ids = self.insert_employees(session, shift_ids)
-            
+
+            # Machines flagged as down need matching open downtime records so
+            # the Downtimes table agrees with Machines.Status
+            self.create_open_downtimes_for_down_machines(session, employee_ids)
+
             # Create production batches with interdependent work orders
             self.create_production_batches(
                 session,
@@ -470,44 +474,20 @@ class MESSimulator:
         return product_ids_map
     
     def insert_inventory(self, session, supplier_ids):
-        """Insert inventory data with realistic supply patterns"""
-        logger.info("Inserting inventory items with realistic supply patterns")
+        """Insert inventory items with placeholder stock levels.
+
+        Quantity and ReorderLevel are placeholders only: after work orders
+        exist, rebalance_inventory_for_production() overwrites both for every
+        item based on actual production demand (including picking the demo
+        shortage items). Only the descriptive fields set here survive.
+        """
+        logger.info("Inserting inventory items")
         inventory_ids_map = {}  # Map inventory names to their IDs
         cost_range = self.data_pools['cost_ranges']['components']
         lead_time_range = self.data_pools['lead_time_range']
-        
-        # Material categories
         categories = self.data_pools['material_categories']
-        
-        # Storage locations
         locations = self.data_pools['storage_locations']
-        
-        # Items that should never run out completely
-        critical_raw_materials = ["Steel Bolts", "Rubber Grips", "Aluminum Tubing"]
-        
-        # Items that may have low inventory
-        shortage_candidates = [
-            "Lithium-ion Cells", "Control Circuits", "Microcontrollers", 
-            "Battery Casings", "Derailleur Springs", "Dropout Hangers", 
-            "Electric Motors", "Chainring Bolts"
-        ]
-        
-        # Select a subset of items that will have critical shortages for demo visibility
-        random.shuffle(shortage_candidates)
-        active_shortage_items = shortage_candidates[:3]  # 3 items will have critical shortages
-        
-        # Store inventory status for reporting
-        inventory_status = {
-            "well_stocked": 0,
-            "adequate": 0,
-            "low": 0,
-            "critical": 0,
-            "overrides": 0
-        }
-        
-        # Prepare the inventory data
-        inventory_data = []
-        
+
         for name in self.data_pools['inventory_names']:
             # Determine category based on item name
             if any(term in name.lower() for term in ["aluminum", "steel", "rubber", "tire"]):
@@ -522,101 +502,21 @@ class MESSimulator:
                 category = "MRO"
             else:
                 category = random.choice(categories)
-            
-            # Get supplier
-            supplier_id = random.choice(supplier_ids)
-            
-            # Determine lead time
-            lead_time = random.randint(
-                lead_time_range['min'], 
-                lead_time_range['max']
-            )
-            
-            # Generate quantity based on item type - much higher base quantities
-            if category == "Raw Material":
-                quantity = random.randint(100, 300)  # Much higher quantities
-            elif category in ["Electronic Component", "Mechanical Component"]:
-                quantity = random.randint(80, 200)   # Much higher quantities
-            elif category == "Assembly":
-                quantity = random.randint(50, 150)   # Much higher quantities
-            else:
-                quantity = random.randint(40, 120)   # Much higher quantities
-                
-            # Adjust quantities for shortage items - critically low for visible demo alerts
-            if name in active_shortage_items:
-                quantity = random.randint(5, 15)    # Critical shortage - very low quantities
-                
-            # Set reorder levels based on item type - very conservative reorder levels
-            if name in critical_raw_materials:
-                # Critical raw materials - very low reorder levels
-                reorder_level = int(quantity * random.uniform(0.05, 0.15))  # Very conservative
-                inventory_status["well_stocked"] += 1
-            elif name in active_shortage_items:
-                # Shortage items - reorder level significantly above current stock (visible critical shortage)
-                reorder_level = random.randint(50, 80)  # Much higher than 5-15 units in stock
-                inventory_status["critical"] += 1
-            else:
-                # Determine stock status category - heavily weighted toward well-stocked
-                stock_status = random.choices(
-                    ["well_stocked", "adequate", "low"],
-                    weights=[85, 12, 3],  # Even more items well stocked
-                    k=1
-                )[0]
-                
-                if stock_status == "well_stocked":
-                    # Well-stocked items - very conservative reorder levels
-                    reorder_level = int(quantity * random.uniform(0.05, 0.15))  # Very low reorder levels
-                    inventory_status["well_stocked"] += 1
-                elif stock_status == "adequate":
-                    # Adequate items - still conservative reorder levels
-                    reorder_level = int(quantity * random.uniform(0.15, 0.25))  # Conservative reorder levels
-                    inventory_status["adequate"] += 1
-                else:
-                    # Low items - moderate reorder levels but still below stock
-                    reorder_level = int(quantity * random.uniform(0.4, 0.6))  # Below stock
-                    inventory_status["low"] += 1
-            
-            # Ensure reorder level is at least 1
-            reorder_level = max(1, reorder_level)
-            
-            # Generate last received date
-            if quantity < reorder_level:
-                # Recently received a small batch
-                last_received = datetime.now() - timedelta(days=random.randint(1, 15))
-            else:
-                # Normal receipt pattern
-                last_received = datetime.now() - timedelta(days=random.randint(1, 90))
-            
-            # Create inventory record
-            inventory_record = {
-                'Name': name,
-                'Category': category,
-                'Quantity': quantity,
-                'ReorderLevel': reorder_level,
-                'SupplierID': supplier_id,
-                'LeadTime': lead_time,
-                'Cost': round(random.uniform(cost_range['min'], cost_range['max']), 2),
-                'LotNumber': f"LOT-{fake.uuid4()[:8]}",
-                'Location': random.choice(locations),
-                'LastReceivedDate': last_received
-            }
-            
-            # Add to inventory data list
-            inventory_data.append(inventory_record)
-        
-        # Insert all inventory records
-        for record in inventory_data:
-            result = session.execute(self.Inventory.insert().values(**record))
-            inventory_id = result.inserted_primary_key[0]
-            inventory_ids_map[record['Name']] = inventory_id
-        
-        # Log inventory status summary
-        logger.info(f"Inventory status distribution:")
-        logger.info(f"  Well stocked items: {inventory_status['well_stocked']}")
-        logger.info(f"  Adequate items: {inventory_status['adequate']}")
-        logger.info(f"  Low inventory items: {inventory_status['low']}")
-        logger.info(f"  Critical shortage items: {inventory_status['critical']}")
-        
+
+            result = session.execute(self.Inventory.insert().values(
+                Name=name,
+                Category=category,
+                Quantity=random.randint(50, 200),  # Placeholder, rebalanced later
+                ReorderLevel=random.randint(10, 40),  # Placeholder, rebalanced later
+                SupplierID=random.choice(supplier_ids),
+                LeadTime=random.randint(lead_time_range['min'], lead_time_range['max']),
+                Cost=round(random.uniform(cost_range['min'], cost_range['max']), 2),
+                LotNumber=f"LOT-{fake.uuid4()[:8]}",
+                Location=random.choice(locations),
+                LastReceivedDate=datetime.now() - timedelta(days=random.randint(1, 90))
+            ))
+            inventory_ids_map[name] = result.inserted_primary_key[0]
+
         session.commit()
         return inventory_ids_map
 
@@ -1078,7 +978,50 @@ class MESSimulator:
         session.commit()
         return employee_ids
     
-    def create_production_batches(self, session, product_ids_map, inventory_ids_map, 
+    def create_open_downtimes_for_down_machines(self, session, employee_ids):
+        """
+        Create an ongoing downtime record (EndTime NULL) for every machine
+        whose status is 'breakdown' or 'maintenance', so the Downtimes table
+        agrees with Machines.Status.
+        """
+        logger.info("Creating open downtime records for machines currently down")
+
+        technicians = [
+            eid for (name, role, _), eid in employee_ids.items() if role == 'Technician'
+        ] or list(employee_ids.values())
+
+        down_machines = session.execute(
+            self.Machines.select().where(self.Machines.c.Status.in_(['breakdown', 'maintenance']))
+        ).fetchall()
+
+        for machine in down_machines:
+            if machine.Status == 'breakdown':
+                category = 'unplanned'
+                reason = 'Equipment Failure'
+                description = f"Ongoing breakdown on {machine.Name} ({machine.Type}), repair in progress"
+                start_time = datetime.now() - timedelta(hours=random.uniform(1, 12))
+            else:
+                category = 'planned'
+                reason = 'Scheduled Maintenance'
+                description = f"Scheduled maintenance in progress on {machine.Name} ({machine.Type})"
+                start_time = datetime.now() - timedelta(hours=random.uniform(0.5, 6))
+
+            session.execute(self.Downtimes.insert().values(
+                MachineID=machine.MachineID,
+                OrderID=None,
+                StartTime=start_time,
+                EndTime=None,   # Still ongoing
+                Duration=None,
+                Reason=reason,
+                Category=category,
+                Description=description,
+                ReportedBy=random.choice(technicians)
+            ))
+
+        session.commit()
+        logger.info(f"Created {len(down_machines)} open downtime records")
+
+    def create_production_batches(self, session, product_ids_map, inventory_ids_map,
                             work_center_ids, machine_ids, employee_ids):
         """
         Create production batches with interdependent work orders.
@@ -2185,8 +2128,6 @@ class MESSimulator:
         """
         logger.info("Normalizing daily completion volumes for consistent production trend")
 
-        from sqlalchemy import text
-
         # Get completion counts by day for the last 14 days (the period shown in dashboard)
         completion_query = text("""
             SELECT
@@ -2281,16 +2222,24 @@ class MESSimulator:
                         second=old_datetime.second
                     )
 
-                    # Update the order's ActualEndTime
-                    update_query = text("""
+                    # Update the order's ActualEndTime, and keep dependent
+                    # records (QC checks, material consumption) on the same
+                    # date so cross-table timelines stay consistent
+                    session.execute(text("""
                         UPDATE WorkOrders
                         SET ActualEndTime = :new_end_time
                         WHERE OrderID = :order_id
-                    """)
-                    session.execute(update_query, {
-                        'new_end_time': new_datetime,
-                        'order_id': order_id
-                    })
+                    """), {'new_end_time': new_datetime, 'order_id': order_id})
+                    session.execute(text("""
+                        UPDATE QualityControl
+                        SET Date = :new_end_time
+                        WHERE OrderID = :order_id
+                    """), {'new_end_time': new_datetime, 'order_id': order_id})
+                    session.execute(text("""
+                        UPDATE MaterialConsumption
+                        SET ConsumptionDate = :new_end_time
+                        WHERE OrderID = :order_id
+                    """), {'new_end_time': new_datetime, 'order_id': order_id})
 
                     moved_units += production
 
@@ -2317,8 +2266,6 @@ class MESSimulator:
         4. Sets reorder levels based on weekly consumption rate
         """
         logger.info("Rebalancing inventory levels based on production requirements")
-
-        from sqlalchemy import text
 
         # Get material requirements for scheduled work orders in next 7 days
         requirements_query = text("""
@@ -2349,7 +2296,6 @@ class MESSimulator:
         shortage_items = set()
 
         if materials_with_demand:
-            import random
             shortage_sample = random.sample(materials_with_demand, num_shortage_items)
             shortage_items = {m[0] for m in shortage_sample}  # Item IDs
             logger.info(f"Selected {num_shortage_items} items for intentional shortage: {[m[1] for m in shortage_sample]}")
@@ -2402,11 +2348,24 @@ class MESSimulator:
     def insert_oee_metrics(self, session, machine_ids):
         """Insert OEE metrics with realistic patterns related to maintenance cycles."""
         logger.info("Inserting OEE metrics with maintenance correlation")
-        
-        # Time period for metrics
+
+        # Time period for metrics - match the work order history window so
+        # OEE trend queries over the full lookback period return data
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=30)
+        start_date = end_date - timedelta(days=self.lookback_days)
         
+        # Sum logged downtime minutes per machine per day so OEE availability
+        # reflects the Downtimes table instead of contradicting it
+        logged_downtime = {}  # (machine_id, 'YYYY-MM-DD') -> minutes
+        downtime_rows = session.execute(text("""
+            SELECT MachineID, date(StartTime) AS day, SUM(Duration) AS minutes
+            FROM Downtimes
+            WHERE Duration IS NOT NULL
+            GROUP BY MachineID, date(StartTime)
+        """))
+        for row in downtime_rows:
+            logged_downtime[(row.MachineID, row.day)] = row.minutes or 0
+
         # Machine type baseline metrics - different machines have different baseline performance
         machine_baselines = {
             "Frame Welding": {"availability": 0.85, "performance": 0.80, "quality": 0.95},
@@ -2453,7 +2412,10 @@ class MESSimulator:
             
             # Simulate a "mini-failure" at a random date within the period
             has_mini_failure = random.random() < 0.15  # 15% chance of a mini failure
-            mini_failure_date = start_date + timedelta(days=random.randint(5, 25)) if has_mini_failure else None
+            mini_failure_date = (
+                start_date + timedelta(days=random.randint(5, max(6, self.lookback_days - 5)))
+                if has_mini_failure else None
+            )
             
             while current_date <= end_date:
                 # Calculate days since last maintenance - ensure it's not negative
@@ -2530,18 +2492,24 @@ class MESSimulator:
                             (daily_variation * 0.3 + 0.7) * # Quality less affected by daily variation
                             (mini_failure_factor * 0.5 + 0.5)) # Quality less affected by failures
                 
-                # Calculate OEE
-                oee = availability * performance * quality
-                
                 # Planned production time - different for weekends
                 if is_weekend:
                     planned_time = 240  # 4 hours on weekends
                 else:
                     planned_time = 480  # 8 hours on weekdays
-                
-                # Calculate derived values
-                downtime = int(planned_time * (1 - availability))
+
+                # Downtime is whichever is larger: the availability model's
+                # implied downtime, or actual logged downtime events for this
+                # machine/day. Availability is then recomputed from that
+                # figure so OEEMetrics never contradicts the Downtimes table.
+                model_downtime = int(planned_time * (1 - availability))
+                day_key = (machine_id, current_date.strftime('%Y-%m-%d'))
+                downtime = min(planned_time, max(model_downtime, logged_downtime.get(day_key, 0)))
+                availability = round((planned_time - downtime) / planned_time, 4)
                 actual_time = planned_time - downtime
+
+                # Calculate OEE
+                oee = availability * performance * quality
                 
                 oee_record = {
                     'MachineID': machine_id,
