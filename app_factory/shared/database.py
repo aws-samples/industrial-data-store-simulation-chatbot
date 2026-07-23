@@ -12,7 +12,7 @@ import time
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine, text, inspect
+from sqlalchemy import create_engine, event, text, inspect
 from sqlalchemy.engine import Engine
 
 from app_factory.shared.db_utils import (
@@ -25,23 +25,33 @@ logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Repository root (two levels up from app_factory/shared/); all default paths
+# anchor here so behavior doesn't depend on the process working directory.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_DB_PATH = PROJECT_ROOT / 'mes.db'
+
+
 class DatabaseManager:
     """Database manager for accessing the MES database with common queries.
 
     Uses SQLAlchemy engine for DB-agnostic access with parameterized queries.
     """
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str = None, read_only: bool = False):
         """Initialize with the database path.
 
         Args:
-            db_path: Path to SQLite database file. Defaults to 'mes.db'.
+            db_path: Path to SQLite database file. Defaults to mes.db at the
+                repository root.
+            read_only: Open the database in read-only mode. Use this for any
+                engine that executes model-generated SQL, so writes are
+                rejected by SQLite itself rather than by query inspection.
         """
         if db_path is None:
-            # Always use mes.db in the root directory, not relative to this file
-            db_path = 'mes.db'
+            db_path = str(DEFAULT_DB_PATH)
 
         self.db_path = db_path
+        self.read_only = read_only
         self._schema_cache = None
         self._schema_cache_time = None
         self._cache_expiry = 60 * 5  # Cache expires after 5 minutes
@@ -50,8 +60,24 @@ class DatabaseManager:
         if not os.path.exists(self.db_path):
             logger.warning(f"Database file not found: {self.db_path}")
 
-        # Create SQLAlchemy engine
-        self.engine: Engine = create_engine(f'sqlite:///{self.db_path}')
+        if read_only:
+            # mode=ro makes SQLite reject any write at the connection level
+            url = f'sqlite:///file:{self.db_path}?mode=ro&uri=true'
+        else:
+            url = f'sqlite:///{self.db_path}'
+        self.engine: Engine = create_engine(url)
+
+        # WAL lets readers proceed during writes (daily data refresh);
+        # busy_timeout avoids immediate "database is locked" errors.
+        @event.listens_for(self.engine, 'connect')
+        def _set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            try:
+                if not self.read_only:
+                    cursor.execute('PRAGMA journal_mode=WAL')
+                cursor.execute('PRAGMA busy_timeout=5000')
+            finally:
+                cursor.close()
 
     def get_connection(self):
         """Get a database connection from the engine."""

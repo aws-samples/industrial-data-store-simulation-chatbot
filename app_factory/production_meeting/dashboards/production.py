@@ -9,11 +9,10 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
 
-from app_factory.shared.database import DatabaseManager
 from app_factory.shared.db_utils import days_ago, days_ahead, today, date_range_start, date_range_end
+from .db_cache import get_shared_db_manager, cached_query
 
-# Initialize database manager
-db_manager = DatabaseManager()
+db_manager = get_shared_db_manager()
 
 # Import shared color configuration
 from .color_config import (
@@ -27,6 +26,10 @@ def get_oee_color(oee_value):
 
 def create_enhanced_gauge(value, title, target=85, max_value=100):
     """Create an enhanced gauge chart - theme compatible with centered number"""
+    # Handle None values
+    if value is None:
+        value = 0
+
     # Calculate delta for display
     delta_value = value - target
     delta_sign = "+" if delta_value >= 0 else ""
@@ -521,20 +524,20 @@ def display_performance_metrics():
             metrics_cols = st.columns(3)
             
             metrics_cols[0].metric(
-                "Availability", 
-                f"{oee_data['AvgAvailability']:.1f}%",
+                "Availability",
+                f"{oee_data['AvgAvailability']:.1f}%" if oee_data['AvgAvailability'] is not None else "N/A",
                 help="Percentage of scheduled time that the operation is available to operate"
             )
-            
+
             metrics_cols[1].metric(
-                "Performance", 
-                f"{oee_data['AvgPerformance']:.1f}%",
+                "Performance",
+                f"{oee_data['AvgPerformance']:.1f}%" if oee_data['AvgPerformance'] is not None else "N/A",
                 help="Speed at which work center runs as a percentage of its designed speed"
             )
-            
+
             metrics_cols[2].metric(
-                "Quality", 
-                f"{oee_data['AvgQuality']:.1f}%",
+                "Quality",
+                f"{oee_data['AvgQuality']:.1f}%" if oee_data['AvgQuality'] is not None else "N/A",
                 help="Good units produced as a percentage of total units started"
             )
             
@@ -884,13 +887,17 @@ def display_bottlenecks_and_issues():
         # Get top downtime events from today and yesterday
         one_day_ago = days_ago(1)
 
+        # Ongoing downtime (EndTime NULL) has no Duration yet - use elapsed
+        # minutes so machines currently down appear at the top of the list
         downtime_query = """
         SELECT
             m.Name as MachineName,
             m.Type as MachineType,
             d.Reason as DowntimeReason,
             d.Category as DowntimeCategory,
-            d.Duration as DurationMinutes,
+            COALESCE(d.Duration,
+                     (strftime('%s', 'now') - strftime('%s', d.StartTime)) / 60) as DurationMinutes,
+            CASE WHEN d.EndTime IS NULL THEN 1 ELSE 0 END as IsOngoing,
             d.Description
         FROM
             Downtimes d
@@ -899,7 +906,7 @@ def display_bottlenecks_and_issues():
         WHERE
             d.StartTime >= :one_day_ago
         ORDER BY
-            d.Duration DESC
+            DurationMinutes DESC
         LIMIT 5
         """
 
@@ -937,10 +944,11 @@ def display_bottlenecks_and_issues():
             
             for i, row in downtime_df.iterrows():
                 downtime_color = "blue" if row['DowntimeCategory'] == 'planned' else "red"
-                
+                ongoing_label = " — ONGOING" if row.get('IsOngoing') else ""
+
                 st.markdown(f"""
-                **{row['MachineName']} ({row['MachineType']})**: <span style='color:{downtime_color}'>{row['DurationMinutes']} minutes</span>  
-                Reason: {row['DowntimeReason']} ({row['DowntimeCategory']})  
+                **{row['MachineName']} ({row['MachineType']})**: <span style='color:{downtime_color}'>{int(row['DurationMinutes'])} minutes{ongoing_label}</span>
+                Reason: {row['DowntimeReason']} ({row['DowntimeCategory']})
                 Description: {row['Description']}
                 """, unsafe_allow_html=True)
                 st.markdown("---")
@@ -957,7 +965,8 @@ def display_bottlenecks_and_issues():
         d.Reason as DowntimeReason,
         d.Category as DowntimeCategory,
         COUNT(d.DowntimeID) as OccurrenceCount,
-        SUM(d.Duration) as TotalMinutes
+        SUM(COALESCE(d.Duration,
+                     (strftime('%s', 'now') - strftime('%s', d.StartTime)) / 60)) as TotalMinutes
     FROM
         Downtimes d
     WHERE

@@ -124,13 +124,10 @@ class DailyAnalysisScheduler:
             "analyses": {}
         }
 
-        # Define analysis types - simplified queries for faster processing
+        # Define analysis types - simplified queries for faster processing.
+        # The executive summary is generated separately via structured output
+        # (generate_executive_summary) — no free-text emoji formatting needed.
         analysis_types = [
-            {
-                "name": "executive_summary",
-                "context": "production",
-                "query": """Executive summary for daily meeting. Format as 3-5 bullet points with emoji indicators (🔴 critical, 🟠 warning, 🟢 good). Include only the most critical issues across production, quality, equipment, and inventory. Under 200 words."""
-            },
             {
                 "name": "production_summary",
                 "context": "production",
@@ -197,13 +194,38 @@ class DailyAnalysisScheduler:
                     "generated_at": datetime.now().isoformat()
                 }
 
+        async def run_executive_summary():
+            """Generate the typed executive summary via structured output."""
+            try:
+                from app_factory.production_meeting_agents.production_meeting_agent import (
+                    generate_executive_summary,
+                )
+                analysis_start = datetime.now()
+                loop = asyncio.get_event_loop()
+                summary = await loop.run_in_executor(None, generate_executive_summary)
+                execution_time = (datetime.now() - analysis_start).total_seconds()
+                logger.info(f"Completed executive_summary in {execution_time:.1f}s")
+                return "executive_summary", {
+                    "analysis": summary.to_markdown(),
+                    "structured": summary.model_dump(),
+                    "execution_time": execution_time,
+                    "generated_at": datetime.now().isoformat(),
+                }
+            except Exception as e:
+                logger.error(f"Error in executive_summary: {e}")
+                return "executive_summary", {
+                    "error": str(e),
+                    "generated_at": datetime.now().isoformat(),
+                }
+
         # Execute all analyses in parallel using asyncio.gather
         tasks = [run_single_analysis(config) for config in analysis_types]
+        tasks.append(run_executive_summary())
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Collect results
         for result in results:
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Parallel task failed: {result}")
             else:
                 name, data = result
@@ -254,6 +276,8 @@ class DailyAnalysisScheduler:
     async def run_daily_analysis(self):
         """Main method to run daily analysis"""
         try:
+            data_regenerated = False
+
             # Step 1: Generate fresh data (if enabled)
             if self.generate_data:
                 logger.info("Step 1: Generating fresh synthetic data...")
@@ -261,21 +285,23 @@ class DailyAnalysisScheduler:
                 if not data_success:
                     logger.warning("Data generation failed, proceeding with existing data")
                 else:
+                    data_regenerated = True
                     logger.info("Fresh data generated successfully")
-            
+
             # Step 2: Initialize agent manager
             logger.info("Step 2: Initializing agent manager...")
             await self.initialize()
-            
+
             # Step 3: Check if analysis already exists for today
+            # Always regenerate analysis when the underlying data was refreshed,
+            # otherwise cached insights will contradict the live dashboard.
             today_cache = self.get_cache_filename()
-            if today_cache.exists():
+            if today_cache.exists() and not data_regenerated:
                 logger.info(f"Daily analysis already exists for today: {today_cache}")
-                
-                # Check if it's recent (within last 6 hours)
+
                 file_time = datetime.fromtimestamp(today_cache.stat().st_mtime)
                 if datetime.now() - file_time < timedelta(hours=6):
-                    logger.info("Recent analysis found, skipping generation")
+                    logger.info("Recent analysis found and data unchanged, skipping generation")
                     return
                 else:
                     logger.info("Analysis is older than 6 hours, regenerating")

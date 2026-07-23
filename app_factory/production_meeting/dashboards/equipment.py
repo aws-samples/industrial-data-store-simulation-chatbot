@@ -8,11 +8,11 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-from app_factory.shared.database import DatabaseManager
+from .db_cache import get_shared_db_manager, cached_query
 from app_factory.shared.db_utils import days_ago, today, date_diff_days
 
 # Initialize database manager
-db_manager = DatabaseManager()
+db_manager = get_shared_db_manager()
 
 # Import shared color configuration
 from .color_config import (
@@ -210,15 +210,20 @@ def equipment_status_dashboard():
     # Get downtime data with production impact
     seven_days_ago = days_ago(7)
 
+    # Ongoing downtime (EndTime NULL) has no Duration yet - count elapsed
+    # minutes so the currently-down machines show up in the impact analysis
     downtime_query = """
     SELECT
         m.Name as MachineName,
         m.Type as MachineType,
         d.Reason as DowntimeReason,
         d.Category as DowntimeCategory,
-        d.Duration as DurationMinutes,
+        COALESCE(d.Duration,
+                 (strftime('%s', 'now') - strftime('%s', d.StartTime)) / 60) as DurationMinutes,
         m.NominalCapacity as UnitsPerHour,
-        (d.Duration / 60.0 * m.NominalCapacity) as EstimatedLostUnits
+        (COALESCE(d.Duration,
+                  (strftime('%s', 'now') - strftime('%s', d.StartTime)) / 60)
+         / 60.0 * m.NominalCapacity) as EstimatedLostUnits
     FROM
         Downtimes d
     JOIN

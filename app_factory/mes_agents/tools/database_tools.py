@@ -19,20 +19,22 @@ import pandas as pd
 import logging
 from typing import Dict, Any, List, Optional
 from strands import tool
-from ..error_handling import IntelligentErrorAnalyzer, ErrorContext, TimeoutHandler
+from ..error_handling import IntelligentErrorAnalyzer, ErrorContext
 from datetime import datetime
 
 from app_factory.shared.database import DatabaseManager
+from app_factory.shared.sql_safety import validate_readonly_query
 
-# Shared database manager instance
+# Shared database manager instance. Read-only: this manager executes
+# model-generated SQL, so writes must be rejected at the connection level.
 _db_manager: Optional[DatabaseManager] = None
 
 
 def _get_db_manager() -> DatabaseManager:
-    """Get or create the shared database manager instance."""
+    """Get or create the shared read-only database manager instance."""
     global _db_manager
     if _db_manager is None:
-        _db_manager = DatabaseManager()
+        _db_manager = DatabaseManager(read_only=True)
     return _db_manager
 
 
@@ -259,49 +261,8 @@ def _handle_db_error(error_message: str, query: str, start_time: datetime) -> Di
 
 
 def _validate_query(query: str) -> Dict[str, Any]:
-    """
-    Validate SQL query before execution.
-    
-    Args:
-        query: SQL query string
-        
-    Returns:
-        Dictionary with validation results
-    """
-    validation_result = {'valid': True, 'warnings': [], 'suggestions': []}
-    
-    query_lower = query.lower().strip()
-    
-    # Check for empty query
-    if not query_lower:
-        validation_result['valid'] = False
-        validation_result['error'] = 'Query cannot be empty'
-        return validation_result
-    
-    # Check for dangerous operations (basic safety)
-    dangerous_keywords = ['drop', 'delete', 'truncate', 'alter', 'create', 'insert', 'update']
-    if any(keyword in query_lower for keyword in dangerous_keywords):
-        validation_result['valid'] = False
-        validation_result['error'] = 'Modifying operations are not allowed. Use SELECT queries only.'
-        validation_result['suggestions'] = ['Use SELECT statements to query data without modifying it']
-        return validation_result
-    
-    # Check for SELECT statement
-    if not query_lower.startswith('select'):
-        validation_result['warnings'].append('Query should start with SELECT for data retrieval')
-    
-    # Check for potential performance issues
-    if 'select *' in query_lower and 'limit' not in query_lower:
-        validation_result['warnings'].append('Consider using LIMIT clause with SELECT * for better performance')
-        validation_result['suggestions'].append('Add "LIMIT 100" to limit results for testing')
-    
-    # Check for common syntax issues
-    if query_lower.count('(') != query_lower.count(')'):
-        validation_result['valid'] = False
-        validation_result['error'] = 'Unmatched parentheses in query'
-        return validation_result
-    
-    return validation_result
+    """Validate SQL query before execution (delegates to shared validator)."""
+    return validate_readonly_query(query)
 
 
 def _create_validation_error_response(query: str, validation_result: Dict[str, Any]) -> Dict[str, Any]:

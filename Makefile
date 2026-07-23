@@ -46,4 +46,4 @@ list-cache: ## List available cached analyses
 	@uv run python -c "from app_factory.production_meeting.analysis_cache_manager import AnalysisCacheManager; cache = AnalysisCacheManager(); dates = cache.list_available_dates(7); print('Available Analyses (Last 7 Days):'); [print(f'  {d[\"date\"]}: {d[\"analysis_count\"]} analyses ({d[\"file_size\"]/1024:.1f} KB)') for d in dates]"
 
 logs: ## View daily analysis logs
-	@if [ -f logs/daily_analysis.log ]; then tail -f logs/daily_analysis.log; else echo "No log file found. Run 'make run-analysis' first."; fi
+	@if [ -f daily_analysis.log ]; then tail -f daily_analysis.log; else echo "No log file found. Run 'make run-analysis' first."; fi

@@ -6,11 +6,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-from app_factory.shared.database import DatabaseManager
+from .db_cache import get_shared_db_manager, cached_query
 from app_factory.shared.db_utils import days_ago
 
 # Initialize database manager
-db_manager = DatabaseManager()
+db_manager = get_shared_db_manager()
 
 def add_root_cause_analysis():
     """Add root cause analysis based on actual defect data from the database"""

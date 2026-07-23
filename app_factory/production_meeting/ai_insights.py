@@ -522,9 +522,12 @@ def display_cached_analysis(analysis_data, analysis_type):
                             st.markdown("**💡 Suggested Follow-ups:**")
                             for j, suggestion in enumerate(follow_ups[:3]):
                                 if st.button(suggestion, key=f"cached_followup_{i}_{j}"):
-                                    # Switch to conversational mode with this question
+                                    # Hand off to MES Chat with this question.
+                                    # scope="app": this runs inside a fragment,
+                                    # and switching app_mode needs a full rerun.
                                     st.session_state.switch_to_chat = suggestion
-                                    st.rerun()
+                                    st.session_state.app_mode = "mes_chat"
+                                    st.rerun(scope="app")
         else:
             st.warning("No cached analysis data available")
     
@@ -545,328 +548,117 @@ def display_cached_analysis(analysis_data, analysis_type):
             st.warning(f"No cached data available for {analysis_type}. Please use live analysis.")
 
 
-def display_ai_insights_tab():
-    """Display the AI Insights tab in the production meeting using cached results and live agents"""
-    st.header("🤖 AI Insights & Analysis")
-    
-    # Check for chat mode switch
-    if hasattr(st.session_state, 'switch_to_chat'):
-        question = st.session_state.switch_to_chat
-        delattr(st.session_state, 'switch_to_chat')
-        
-        # Import and run chat interface with the question
+async def _stream_orchestrator_response(query: str, status_container, text_placeholder) -> str:
+    """Stream the production meeting orchestrator, showing tool calls live.
+
+    Mirrors the MES Chat streaming UX so the meeting audience sees the agent
+    querying tables in real time instead of a blank spinner.
+    """
+    from app_factory.production_meeting_agents.production_meeting_agent import (
+        _get_orchestrator_agent,
+    )
+
+    agent = _get_orchestrator_agent()
+    chunks: list = []
+    current_tool = None
+
+    async for event in agent.stream_async(query):
+        if 'data' in event:
+            chunks.append(event['data'])
+            text_placeholder.markdown(''.join(chunks))
+        if 'current_tool_use' in event:
+            tool_name = event['current_tool_use'].get('name', '')
+            if tool_name and tool_name != current_tool:
+                current_tool = tool_name
+                status_container.update(label=f"Agent running: {tool_name}...")
+
+    return ''.join(chunks)
+
+
+def _run_live_question(question: str):
+    """Answer a question with the orchestrator agent, streaming tool calls."""
+    with st.status("Agents analyzing...", expanded=True) as status:
+        placeholder = st.empty()
         try:
-            from app_factory.mes_chat.chat_interface import run_mes_chat
-            st.info(f"Switching to MES Chat for deeper analysis: '{question}'")
-            
-            # Initialize chat with the question
-            if "messages" not in st.session_state:
-                st.session_state.messages = [
-                    {"role": "assistant", "content": "Welcome to MES Insight Chat! I see you have a follow-up question from the daily analysis."}
-                ]
-            
-            st.session_state.messages.append({"role": "user", "content": question})
-            st.session_state["process_query"] = question
-            
-            # Run the chat interface
-            run_mes_chat()
-            return
-            
-        except ImportError as e:
-            st.error(f"Could not load MES Chat interface: {e}")
-    
-    col1, col2 = st.columns([3, 1])
-    
-    with col2:
-        # Cache status and settings sidebar
-        st.subheader("📊 Analysis Status")
-        
-        # Display cache status
+            answer = asyncio.run(_stream_orchestrator_response(question, status, placeholder))
+            status.update(label="Analysis complete", state="complete", expanded=True)
+            return answer
+        except Exception as e:
+            logger.error(f"Live analysis failed: {e}")
+            status.update(label="Analysis failed", state="error")
+            st.error(f"Analysis failed: {e}")
+            return None
+
+
+def display_ai_insights_tab():
+    """AI Insights tab: cached briefing details + live streaming follow-ups.
+
+    Plumbing (cache modes, agent init, depth selectors) is hidden behind an
+    Advanced expander — a plant manager just sees insights and a question box.
+    """
+    st.header("🤖 AI Insights & Analysis")
+
+    cached = cache_manager.get_latest_analysis(max_age_hours=48)
+
+    # ----- Cached domain analyses ----- #
+    if cached:
+        generated_at = cached.get('generated_at', '')
+        exec_time = cached.get('total_execution_time', 0)
+        time_str = generated_at[:16].replace('T', ' ') if generated_at else 'unknown'
+        st.caption(
+            f"Generated {time_str} by the nightly agent run "
+            f"({len(cached.get('analyses', {}))} agents, {exec_time:.0f}s total) — "
+            f"Amazon Bedrock + Strands Agents"
+        )
+        display_cached_analysis(cached, "Quick Summary")
+    else:
+        st.info("No overnight analysis available yet.")
+        if st.button("Run analysis now (~1 min)", type="primary"):
+            answer = _run_live_question(
+                "Give me the full daily briefing: production status, quality issues, "
+                "equipment status, and inventory shortages."
+            )
+            if answer:
+                st.markdown(answer)
+
+    # ----- Live follow-up questions with streaming ----- #
+    st.divider()
+    st.subheader("💬 Ask the agents")
+    question = st.chat_input("Ask a follow-up about today's operations...")
+    if question:
+        st.markdown(f"**You asked:** {question}")
+        answer = _run_live_question(question)
+        if answer:
+            # Persist so the answer (and its button) survive the button-click rerun
+            st.session_state.pm_last_qa = (question, answer)
+    elif st.session_state.get('pm_last_qa'):
+        prev_q, prev_a = st.session_state.pm_last_qa
+        st.markdown(f"**You asked:** {prev_q}")
+        st.markdown(prev_a)
+
+    if st.session_state.get('pm_last_qa'):
+        if st.button("Continue in MES Chat →", key="continue_chat"):
+            st.session_state.switch_to_chat = st.session_state.pm_last_qa[0]
+            st.session_state.pop('pm_last_qa', None)
+            st.session_state.app_mode = "mes_chat"
+            st.rerun(scope="app")  # full rerun: leaving the fragment/app
+
+    # ----- Advanced: everything a plant manager doesn't need ----- #
+    with st.expander("⚙️ Advanced"):
         cache_status = cache_manager.get_cache_status()
-        
-        if cache_status['is_fresh']:
-            st.success("✅ Fresh Daily Analysis Available")
-            latest = cache_status['latest_analysis']
-            if latest:
-                st.info(f"Generated: {latest['date']}")
-        else:
-            st.warning("⚠️ No Fresh Analysis Available")
-            st.info("Using live agent analysis (slower)")
-        
-        # Analysis mode selector
-        use_cached = st.radio(
-            "Analysis Mode",
-            options=["Cached (Fast)", "Live Agent (Comprehensive)"],
-            index=0 if cache_status['is_fresh'] else 1,
-            help="Cached analysis is pre-generated daily. Live analysis provides real-time insights."
-        )
-        
-        # Analysis type selector
-        analysis_type = st.radio(
-            "Analysis Type",
-            options=[
-                "Quick Summary", 
-                "Predictive Insights"
-            ],
-            index=0,
-        )
-        
-        # Reset auto-load state when switching analysis types
-        if "previous_analysis_type" not in st.session_state:
-            st.session_state.previous_analysis_type = analysis_type
-        elif st.session_state.previous_analysis_type != analysis_type:
-            st.session_state.auto_loaded_summary = False
-            st.session_state.previous_analysis_type = analysis_type
-        
-        # Settings for live analysis
-        if use_cached == "Live Agent (Comprehensive)":
-            st.divider()
-            st.subheader("Live Agent Settings")
-            
-            # Display agent status
-            if agent_manager.is_ready():
-                st.success("✅ Production Meeting Agents Ready")
-                agent_status = agent_manager.get_agent_status()
-                st.info(f"Model: {agent_status['config']['model']}")
-            else:
-                st.warning("⚠️ Agents Initializing...")
-                if st.button("Initialize Agents"):
-                    try:
-                        asyncio.run(agent_manager.initialize())
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Failed to initialize agents: {e}")
-            
-            # Analysis depth control
-            analysis_depth = st.selectbox(
-                "Analysis Depth",
-                options=["Standard", "Comprehensive"],
-                index=0,
-                help="Standard for quick insights, Comprehensive for detailed analysis"
-            )
-            
-            # Meeting focus control
-            meeting_focus = st.selectbox(
-                "Meeting Focus",
-                options=["Daily", "Weekly", "Monthly"],
-                index=0,
-                help="Adjust insights based on meeting timeframe"
-            )
-        
-        # Initialize auto-load tracking
-        if "auto_loaded_summary" not in st.session_state:
-            st.session_state.auto_loaded_summary = False
-        
-        # Dynamic button text based on state
-        if (use_cached == "Cached (Fast)" and 
-            analysis_type == "Quick Summary" and 
-            cache_status['is_fresh'] and 
-            st.session_state.auto_loaded_summary):
-            button_text = "Refresh Cached Analysis"
-        elif use_cached == "Cached (Fast)":
-            button_text = "Load Cached Analysis"
-        else:
-            button_text = "Generate Live Analysis"
-        
-        generate_button = st.button(button_text, use_container_width=True)
-        
-        # MES Chat integration
-        st.divider()
-        st.subheader("🔍 Deep Dive Analysis")
-        st.markdown("For follow-up questions and deeper analysis:")
-        
-        if st.button("Open MES Chat", use_container_width=True):
-            # Switch to chat mode
-            st.session_state.switch_to_chat = "I'd like to dive deeper into the production analysis"
-            st.rerun()
-        
-        # Cache management
-        st.divider()
-        with st.expander("🗂️ Cache Management"):
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.write(f"Cache fresh: {'yes' if cache_status['is_fresh'] else 'no'}")
             st.write(f"Cache size: {cache_status['cache_size_mb']} MB")
             st.write(f"Available analyses: {cache_status['available_analyses']}")
-            
-            if st.button("Refresh Cache Status"):
-                st.rerun()
-        
-        # Set agent context for live analysis
-        if use_cached == "Live Agent (Comprehensive)" and generate_button:
-            agent_manager.set_meeting_context(
-                meeting_type=meeting_focus.lower(),
-                focus_areas=['production', 'quality', 'equipment', 'inventory']
-            )
-    
-    with col1:
-        # Handle analysis generation
-        if generate_button:
-            if use_cached == "Cached (Fast)":
-                # Load and display cached analysis
-                cached_analysis = cache_manager.get_latest_analysis(max_age_hours=24)
-                
-                if cached_analysis:
-                    # Show refresh info if this was a refresh action
-                    if (analysis_type == "Quick Summary" and 
-                        st.session_state.auto_loaded_summary):
-                        latest = cache_status['latest_analysis']
-                        st.info(f"🔄 Refreshed Quick Summary from cache (Generated: {latest['date']})")
-                    
-                    display_cached_analysis(cached_analysis, analysis_type)
-                    
-                    # Mark as loaded for Quick Summary
-                    if analysis_type == "Quick Summary":
-                        st.session_state.auto_loaded_summary = True
-                else:
-                    st.error("No cached analysis available. Please use Live Agent analysis or run the daily scheduler.")
-                    st.info("To generate daily cache, run: `uv run python scripts/run_daily_analysis.py` or `make run-analysis`")
-            
-            else:
-                # Use live agent analysis (original functionality)
-                # Initialize various analysis session states
-                for key in ["summary_insights", "predictive_insights"]:
-                    if key not in st.session_state:
-                        st.session_state[key] = False
-                
-                # Determine which analysis to display
-                if analysis_type == "Quick Summary":
-                    st.session_state.current_analysis = "summary"
-                elif analysis_type == "Predictive Insights":
-                    st.session_state.current_analysis = "predictive"
-        
-        # Display the appropriate analysis based on state (for live analysis)
-        if hasattr(st.session_state, 'current_analysis') and use_cached == "Live Agent (Comprehensive)":
-            if st.session_state.current_analysis == "summary":
-                # Use agent manager for summary generation
-                summary = generate_ai_insight("summary", include_historical=(analysis_depth == "Comprehensive"))
-                st.markdown(summary, unsafe_allow_html=True)
-                st.session_state.summary_insights = True
-            
-            elif st.session_state.current_analysis == "predictive":
-                if not st.session_state.predictive_insights:
-                    with st.spinner("Generating predictive insights..."):
-                        generate_predictive_insights()
-                        st.session_state.predictive_insights = True
-                else:
-                    generate_predictive_insights()
-        
-        elif not generate_button:
-            # Auto-load Quick Summary if cached data is fresh and not already loaded
-            if (use_cached == "Cached (Fast)" and 
-                analysis_type == "Quick Summary" and 
-                cache_status['is_fresh'] and 
-                not st.session_state.auto_loaded_summary):
-                
-                # Auto-load cached Quick Summary
-                cached_analysis = cache_manager.get_latest_analysis(max_age_hours=24)
-                if cached_analysis:
-                    # Show cache info
-                    latest = cache_status['latest_analysis']
-                    st.success(f"✅ Auto-loaded Quick Summary from cache (Generated: {latest['date']})")
-                    
-                    # Display the analysis
-                    display_cached_analysis(cached_analysis, "Quick Summary")
-                    st.session_state.auto_loaded_summary = True
-                else:
-                    st.error("No cached analysis available. Please use Live Agent analysis or run the daily scheduler.")
-                    st.info("To generate daily cache, run: `uv run python scripts/run_daily_analysis.py` or `make run-analysis`")
-            
-            elif (use_cached == "Cached (Fast)" and 
-                  analysis_type == "Predictive Insights"):
-                # For Predictive Insights, show instruction to click generate
-                st.info("Click 'Load Cached Analysis' to view predictive insights from the daily analysis cache.")
-                
-                # Show cache freshness info
-                if cache_status['is_fresh']:
-                    latest = cache_status['latest_analysis']
-                    st.info(f"Cache available from: {latest['date']}")
-                else:
-                    st.warning("No fresh cache available - consider using Live Agent analysis.")
-            
-            elif use_cached == "Live Agent (Comprehensive)":
-                # For live analysis, show instruction
-                st.info("Click 'Generate Live Analysis' to create real-time insights using production meeting agents.")
-                
-                if not agent_manager.is_ready():
-                    st.warning("⚠️ Agents are still initializing. Please wait or try refreshing.")
-            
-            else:
-                # Fallback state
-                st.info("Select an analysis mode and type to get started.")
-                
-                # Show helpful tips for cache setup if no cache available
-                if not cache_status['is_fresh']:
-                    st.info("💡 **Tip**: Run the daily analysis scheduler to enable fast cached insights!")
-                    st.code("uv run python scripts/run_daily_analysis.py")
-                    st.info("Or use the shortcut: `make run-analysis`")
+            st.code("make run-analysis", language="bash")
+        with col_b:
+            if st.button("Predictive insights (rule-based)"):
+                st.session_state.show_predictive = True
+        if st.session_state.get('show_predictive'):
+            generate_predictive_insights()
 
 
-
-def provide_contextual_tab_insights(tab_name, dashboard_data=None):
-    """
-    Provide contextual insights for specific dashboard tabs using production meeting agents
-    
-    Args:
-        tab_name (str): Name of the dashboard tab (production, quality, equipment, inventory, etc.)
-        dashboard_data (dict, optional): Current dashboard data for context
-        
-    Returns:
-        str: Contextual insights for the tab
-    """
-    # Initialize agent manager if not ready
-    if not agent_manager.is_ready():
-        try:
-            # Run initialization
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                asyncio.create_task(agent_manager.initialize())
-            else:
-                asyncio.run(agent_manager.initialize())
-        except Exception as e:
-            logger.error(f"Failed to initialize agent manager for tab insights: {e}")
-            return f"**Agent Initialization Error**\n\nUnable to initialize production meeting agents for {tab_name} insights."
-    
-    try:
-        with st.spinner(f"Generating {tab_name} insights..."):
-            start_time = time.time()
-            
-            # Process contextual insights using agent manager
-            try:
-                # Try async processing
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    response = asyncio.run_coroutine_threadsafe(
-                        agent_manager.get_contextual_insights(dashboard_data or {}, tab_name), 
-                        loop
-                    ).result(timeout=30)
-                else:
-                    response = asyncio.run(agent_manager.get_contextual_insights(dashboard_data or {}, tab_name))
-            except (RuntimeError, asyncio.TimeoutError):
-                # Fallback for synchronous processing
-                logging.warning("Async tab insights processing failed, using fallback")
-                response = f"Analyzing {tab_name} data for contextual insights..."
-            
-            elapsed_time = time.time() - start_time
-            
-            # Add attribution
-            if isinstance(response, str):
-                response += f"\n\n<small><i>Generated by Production Meeting Agent for {tab_name.title()} in {elapsed_time:.1f}s</i></small>"
-            
-            return response
-            
-    except Exception as e:
-        error_msg = str(e)
-        logging.error(f"Error generating tab insights for {tab_name}: {error_msg}")
-        
-        return f"""
-        **Tab Insights Error**
-        
-        Unable to generate insights for the {tab_name} tab:
-        
-        ```
-        {error_msg}
-        ```
-        
-        The tab data is still available, but AI-powered insights are temporarily unavailable.
-        """
 
 
 if __name__ == "__main__":

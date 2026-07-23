@@ -46,14 +46,9 @@ class ProductionMeetingAgentManager:
         self._proactive_insights_cache = {}
         
         logger.info("ProductionMeetingAgentManager initialized")
-        
-        # Initialize immediately if agent is enabled
-        if self.config.agent_enabled:
-            try:
-                asyncio.create_task(self.initialize())
-            except RuntimeError:
-                # If no event loop is running, initialize synchronously
-                pass
+        # Initialization is lazy: process_query() calls initialize() on first
+        # use. Eager fire-and-forget asyncio.create_task from __init__ was
+        # unreliable (swallowed exceptions, RuntimeWarning without a loop).
     
     async def initialize(self):
         """Initialize the agent manager and verify agent availability."""
@@ -238,9 +233,7 @@ class ProductionMeetingAgentManager:
                 'model': self.config.default_model,
                 'timeout': self.config.timeout_seconds,
                 'meeting_focus': self.config.meeting_focus,
-                'analysis_depth': self.config.analysis_depth,
-                'max_query_steps': self.config.max_query_steps,
-                'progress_updates_enabled': self.config.enable_progress_updates
+                'analysis_depth': self.config.analysis_depth
             },
             'tools_available': [
                 'production_meeting_analysis_tool',
